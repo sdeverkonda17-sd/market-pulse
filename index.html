@@ -11,6 +11,7 @@
   <style>#analysis-modal{width:min(900px,94vw);max-height:90vh;overflow:auto;background:#0d1b2c;color:#edf5fb;border:1px solid #20384e;border-radius:12px;padding:18px}#analysis-modal::backdrop{background:#020914aa}#modal-close{float:right;background:transparent;color:inherit;border:1px solid #20384e;border-radius:6px;padding:6px 9px}.ticker-lookup{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:16px;margin:0 0 24px;border:1px solid #20384e;border-radius:10px;background:#0d1b2c}.ticker-lookup span{display:block;color:#9db0c3;font-size:13px}.ticker-lookup form{display:flex;gap:8px}.ticker-lookup input{padding:10px;min-width:230px;border-radius:8px;border:1px solid #20384e;background:#11253a;color:#edf5fb}@media(max-width:640px){.ticker-lookup{display:block}.ticker-lookup form{margin-top:12px}.ticker-lookup input{min-width:0;width:100%}}</style>
   <style>.filter-caption{display:block;font-size:9px;letter-spacing:.08em;color:#9db0c3;margin-bottom:2px}.search{display:flex;align-items:center;gap:6px}.search .filter-caption{position:absolute;transform:translateY(-17px)}.search input{padding-top:10px}@media(max-width:640px){main{padding:24px 14px 42px}.hero h1{font-size:34px}.hero-copy{font-size:15px}.hero-actions{white-space:normal}.hero-actions button{flex:1}.notice{font-size:12px}.summary-grid{gap:8px}.metric{padding:12px}.metric strong{font-size:20px}.controls{gap:10px}.tabs{width:100%;overflow-x:auto}.tabs button{white-space:nowrap}.search{width:100%;min-width:0}.search input{width:100%;min-width:0}.select-label{width:100%;display:flex;align-items:center;justify-content:space-between}.select-label select{width:72%}.table-wrap{margin:0 -14px;border-radius:0;border-left:0;border-right:0}table{min-width:690px;font-size:13px}th,td{padding:11px 9px}.detail-metrics{grid-template-columns:1fr}.detail-card{padding:16px}.news-grid{grid-template-columns:1fr}#analysis-modal{width:100vw;max-width:100vw;max-height:100vh;height:100vh;border-radius:0;padding:14px}.ticker-lookup form{flex-wrap:wrap}.ticker-lookup input{flex:1;min-width:0}.ticker-lookup form button{width:100%}}</style>
   <style>.chart-actions{display:flex;gap:7px;margin:0 0 10px}.chart-actions button{background:#11253a;color:#edf5fb;border:1px solid #31506c;border-radius:7px;padding:6px 11px;font-weight:700}.chart-actions button[aria-pressed="true"]{background:#42d392;color:#032519;border-color:#42d392}.chart-actions button:focus-visible{outline:2px solid #6eafff;outline-offset:2px}</style>
+  <style>.earnings-calculator{margin:0 0 25px;padding:18px;background:#0d1b2c;border:1px solid #20384e;border-radius:11px}.earnings-calculator span{display:block;color:#9db0c3;font-size:13px}.earnings-calculator form{display:flex;gap:8px;margin-top:13px}.earnings-calculator input{min-width:180px;padding:10px;border-radius:8px;border:1px solid #31506c;background:#11253a;color:#edf5fb}.earnings-calculator #units{min-width:120px}.earnings-calculator #earnings-result{margin-top:12px;color:#d6e2ec;font-size:14px;line-height:1.6}.score-explanation{margin:8px 0 16px;padding:12px;background:#11253a;border-left:3px solid #6eafff;border-radius:7px}.score-explanation h3{margin:0 0 5px;font-size:14px}.score-explanation p{margin:5px 0;color:#c4d1dd;font-size:13px}@media(max-width:640px){.earnings-calculator form{flex-wrap:wrap}.earnings-calculator input,.earnings-calculator #units{width:100%;min-width:0}.earnings-calculator button{width:100%}}</style>
   <title>Market Pulse | Daily Stock Signals</title>
 </head>
 <body>
@@ -36,6 +37,12 @@
     <section class="ticker-lookup" aria-label="Analyze any NSE stock">
       <div><p class="eyebrow">ANY NSE STOCK</p><strong>Research a ticker beyond the daily watchlist</strong><span>Enter the NSE symbol; “.NS” is added automatically.</span></div>
       <form id="ticker-form"><label class="sr-only" for="ticker-input">NSE ticker</label><input id="ticker-input" type="text" maxlength="30" autocomplete="off" placeholder="e.g. MARUTI or TATAMOTORS" /><button class="primary" type="submit">Analyze stock</button></form>
+    </section>
+
+    <section class="earnings-calculator" aria-label="Six month investment scenario calculator">
+      <div><p class="eyebrow">SIX-MONTH SCENARIO</p><strong>Estimate a potential gain or loss</strong><span>Uses the dashboard’s historical model; not a guaranteed return.</span></div>
+      <form id="earnings-form"><label class="sr-only" for="earnings-ticker">NSE ticker</label><input id="earnings-ticker" type="text" maxlength="30" placeholder="Ticker, e.g. MTARTECH" /><label class="sr-only" for="units">Number of units</label><input id="units" type="number" min="1" step="1" placeholder="Units to buy" /><button class="primary" type="submit">Calculate</button></form>
+      <div id="earnings-result" aria-live="polite"></div>
     </section>
 
     <section class="notice" aria-label="Methodology notice">
@@ -82,5 +89,23 @@
   <dialog id="analysis-modal" aria-label="Stock analysis"><button id="modal-close" type="button" aria-label="Close analysis">× Close</button><article class="detail-card" id="detail-card"></article></dialog>
   <footer><span>Market Pulse · Built by Suman Devarakonda</span><span>Data: Yahoo Finance price & news feeds when available · Values in INR</span><span id="footer-date"></span></footer>
   <script src="app.js"></script>
+  <script>
+    document.querySelector('#earnings-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const raw = document.querySelector('#earnings-ticker').value.trim().toUpperCase().replace(/\s/g, '');
+      const units = Number(document.querySelector('#units').value);
+      const result = document.querySelector('#earnings-result');
+      if (!raw || !Number.isFinite(units) || units <= 0) { result.textContent = 'Enter an NSE ticker and a whole number of units.'; return; }
+      const symbol = raw.endsWith('.NS') ? raw : `${raw}.NS`;
+      result.textContent = `Calculating ${symbol} scenario…`;
+      try {
+        const data = await chart(symbol), meta = data.chart.result[0].meta, stock = analyse(symbol, meta.longName || raw, data);
+        const sixMonth = value => (Math.sqrt(1 + value / 100) - 1) * 100;
+        const base = sixMonth(stock.base), bull = sixMonth(stock.bull), bear = sixMonth(stock.bear);
+        const investment = stock.price * units, gain = investment * base / 100;
+        result.innerHTML = `<strong>${stock.name} · ${units.toLocaleString('en-IN')} units</strong><br>Current investment: ${fmt.format(investment)}<br><strong>6-month base scenario: ${pct(base)} (${gain >= 0 ? 'potential gain' : 'potential loss'} ${fmt.format(Math.abs(gain))})</strong><br>Scenario range: ${pct(bear)} to ${pct(bull)}. This is a historical-model scenario, not guaranteed earnings.`;
+      } catch { result.textContent = `Could not retrieve ${symbol}. Check the NSE ticker and try again.`; }
+    });
+  </script>
 </body>
 </html>
