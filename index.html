@@ -12,6 +12,7 @@
   <style>.filter-caption{display:block;font-size:9px;letter-spacing:.08em;color:#9db0c3;margin-bottom:2px}.search{display:flex;align-items:center;gap:6px}.search .filter-caption{position:absolute;transform:translateY(-17px)}.search input{padding-top:10px}@media(max-width:640px){main{padding:24px 14px 42px}.hero h1{font-size:34px}.hero-copy{font-size:15px}.hero-actions{white-space:normal}.hero-actions button{flex:1}.notice{font-size:12px}.summary-grid{gap:8px}.metric{padding:12px}.metric strong{font-size:20px}.controls{gap:10px}.tabs{width:100%;overflow-x:auto}.tabs button{white-space:nowrap}.search{width:100%;min-width:0}.search input{width:100%;min-width:0}.select-label{width:100%;display:flex;align-items:center;justify-content:space-between}.select-label select{width:72%}.table-wrap{margin:0 -14px;border-radius:0;border-left:0;border-right:0}table{min-width:690px;font-size:13px}th,td{padding:11px 9px}.detail-metrics{grid-template-columns:1fr}.detail-card{padding:16px}.news-grid{grid-template-columns:1fr}#analysis-modal{width:100vw;max-width:100vw;max-height:100vh;height:100vh;border-radius:0;padding:14px}.ticker-lookup form{flex-wrap:wrap}.ticker-lookup input{flex:1;min-width:0}.ticker-lookup form button{width:100%}}</style>
   <style>.chart-actions{display:flex;gap:7px;margin:0 0 10px}.chart-actions button{background:#11253a;color:#edf5fb;border:1px solid #31506c;border-radius:7px;padding:6px 11px;font-weight:700}.chart-actions button[aria-pressed="true"]{background:#42d392;color:#032519;border-color:#42d392}.chart-actions button:focus-visible{outline:2px solid #6eafff;outline-offset:2px}</style>
   <style>.earnings-calculator{margin:0 0 25px;padding:18px;background:#0d1b2c;border:1px solid #20384e;border-radius:11px}.earnings-calculator span{display:block;color:#9db0c3;font-size:13px}.earnings-calculator form{display:flex;gap:8px;margin-top:13px}.earnings-calculator input{min-width:180px;padding:10px;border-radius:8px;border:1px solid #31506c;background:#11253a;color:#edf5fb}.earnings-calculator #units{min-width:120px}.earnings-calculator #earnings-result{margin-top:12px;color:#d6e2ec;font-size:14px;line-height:1.6}.score-explanation{margin:8px 0 16px;padding:12px;background:#11253a;border-left:3px solid #6eafff;border-radius:7px}.score-explanation h3{margin:0 0 5px;font-size:14px}.score-explanation p{margin:5px 0;color:#c4d1dd;font-size:13px}@media(max-width:640px){.earnings-calculator form{flex-wrap:wrap}.earnings-calculator input,.earnings-calculator #units{width:100%;min-width:0}.earnings-calculator button{width:100%}}</style>
+  <style>.modal-calculator{margin:14px 0;padding:13px;background:#11253a;border:1px solid #31506c;border-radius:8px}.modal-calculator h3,.modal-calculator p{margin:0 0 7px}.modal-calculator form{display:flex;gap:8px}.modal-calculator input{padding:8px;border-radius:6px;border:1px solid #31506c;background:#07111f;color:#edf5fb}.modal-calculator #modal-return-result{margin-top:9px;line-height:1.6;color:#d6e2ec}@media(max-width:640px){.modal-calculator form{flex-wrap:wrap}.modal-calculator input,.modal-calculator button{width:100%}}</style>
   <title>Market Pulse | Daily Stock Signals</title>
 </head>
 <body>
@@ -39,8 +40,8 @@
       <form id="ticker-form"><label class="sr-only" for="ticker-input">NSE ticker</label><input id="ticker-input" type="text" maxlength="30" autocomplete="off" placeholder="e.g. MARUTI or TATAMOTORS" /><button class="primary" type="submit">Analyze stock</button></form>
     </section>
 
-    <section class="earnings-calculator" aria-label="Six month investment scenario calculator">
-      <div><p class="eyebrow">SIX-MONTH SCENARIO</p><strong>Estimate a potential gain or loss</strong><span>Uses the dashboard’s historical model; not a guaranteed return.</span></div>
+    <section class="earnings-calculator" aria-label="Investment scenario calculator">
+      <div><p class="eyebrow">INVESTMENT SCENARIO</p><strong>Estimate a potential gain or loss</strong><span>Shows 1, 3, 6 and 12-month historical-model scenarios; not guaranteed returns.</span></div>
       <form id="earnings-form"><label class="sr-only" for="earnings-ticker">NSE ticker</label><input id="earnings-ticker" type="text" maxlength="30" placeholder="Ticker, e.g. MTARTECH" /><label class="sr-only" for="units">Number of units</label><input id="units" type="number" min="1" step="1" placeholder="Units to buy" /><button class="primary" type="submit">Calculate</button></form>
       <div id="earnings-result" aria-live="polite"></div>
     </section>
@@ -100,11 +101,36 @@
       result.textContent = `Calculating ${symbol} scenario…`;
       try {
         const data = await chart(symbol), meta = data.chart.result[0].meta, stock = analyse(symbol, meta.longName || raw, data);
-        const sixMonth = value => (Math.sqrt(1 + value / 100) - 1) * 100;
-        const base = sixMonth(stock.base), bull = sixMonth(stock.bull), bear = sixMonth(stock.bear);
-        const investment = stock.price * units, gain = investment * base / 100;
-        result.innerHTML = `<strong>${stock.name} · ${units.toLocaleString('en-IN')} units</strong><br>Current investment: ${fmt.format(investment)}<br><strong>6-month base scenario: ${pct(base)} (${gain >= 0 ? 'potential gain' : 'potential loss'} ${fmt.format(Math.abs(gain))})</strong><br>Scenario range: ${pct(bear)} to ${pct(bull)}. This is a historical-model scenario, not guaranteed earnings.`;
+        const projection = months => (Math.pow(1 + stock.base / 100, months / 12) - 1) * 100;
+        const investment = stock.price * units;
+        const row = months => { const change = projection(months), value = investment * (1 + change / 100), gain = value - investment; return `<tr><td>${months} month${months > 1 ? 's' : ''}</td><td>${pct(change)}</td><td>${fmt.format(value)}</td><td class="${gain >= 0 ? 'positive' : 'negative'}">${gain >= 0 ? '+' : '−'}${fmt.format(Math.abs(gain))}</td></tr>`; };
+        result.innerHTML = `<strong>${stock.name} · ${units.toLocaleString('en-IN')} units</strong><br>Current price per unit: <strong>${fmt.format(stock.price)}</strong><br>Total investment today: <strong>${fmt.format(investment)}</strong><table class="projection-table"><thead><tr><th>Period</th><th>Base scenario</th><th>Estimated value</th><th>Gain / loss</th></tr></thead><tbody>${row(1)}${row(3)}${row(6)}${row(12)}</tbody></table><small>Historical-model base scenarios only; actual returns can be materially different.</small>`;
       } catch { result.textContent = `Could not retrieve ${symbol}. Check the NSE ticker and try again.`; }
+    });
+  </script>
+  <script>
+    document.addEventListener('submit', event => {
+      if (event.target.id !== 'modal-return-form') return;
+      event.preventDefault();
+      const units = Number(document.querySelector('#modal-units').value);
+      const output = document.querySelector('#modal-return-result');
+      if (!active || !Number.isFinite(units) || units <= 0) { output.textContent = 'Enter a valid number of units.'; return; }
+      const investment = active.price * units;
+      const row = months => { const percent = (Math.pow(1 + active.base / 100, months / 12) - 1) * 100, gain = investment * percent / 100; return `${months}m: ${pct(percent)} · ${gain >= 0 ? '+' : '−'}${fmt.format(Math.abs(gain))}`; };
+      output.innerHTML = `<strong>Total investment: ${fmt.format(investment)}</strong><br>${row(1)}<br>${row(3)}<br>${row(6)}<br>${row(12)}<br><small>Historical-model scenarios, not guaranteed returns.</small>`;
+    });
+  </script>
+  <script>
+    document.addEventListener('click', event => {
+      if (!event.target.closest('[data-open]')) return;
+      setTimeout(() => {
+        const box = document.querySelector('.score-explanation');
+        if (!box || box.querySelector('.beginner-guide')) return;
+        const guide = document.createElement('div');
+        guide.className = 'beginner-guide';
+        guide.innerHTML = '<strong>Simple guide:</strong> Think of the score like a traffic light. It starts at 50. <b>Trend:</b> prices above their 20- and 50-day averages add points because the recent direction is stronger. <b>Momentum:</b> RSI checks whether buying is balanced (very high RSI can mean the price is overheated); MACD checks whether upward or downward momentum is building. <b>Risk:</b> a large fall from the yearly high or unusually high volatility removes points. A higher score means more technical factors are positive today—it does not guarantee a profit.';
+        box.appendChild(guide);
+      }, 0);
     });
   </script>
 </body>
