@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#07111f" />
+  <meta name="description" content="Market Pulse — transparent stock signals, news context, and 12-month scenarios." />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>#analysis-modal{width:min(900px,94vw);max-height:90vh;overflow:auto;background:#0d1b2c;color:#edf5fb;border:1px solid #20384e;border-radius:12px;padding:18px}#analysis-modal::backdrop{background:#020914aa}#modal-close{float:right;background:transparent;color:inherit;border:1px solid #20384e;border-radius:6px;padding:6px 9px}.ticker-lookup{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:16px;margin:0 0 24px;border:1px solid #20384e;border-radius:10px;background:#0d1b2c}.ticker-lookup span{display:block;color:#9db0c3;font-size:13px}.ticker-lookup form{display:flex;gap:8px}.ticker-lookup input{padding:10px;min-width:230px;border-radius:8px;border:1px solid #20384e;background:#11253a;color:#edf5fb}@media(max-width:640px){.ticker-lookup{display:block}.ticker-lookup form{margin-top:12px}.ticker-lookup input{min-width:0;width:100%}}</style>
+  <style>.filter-caption{display:block;font-size:9px;letter-spacing:.08em;color:#9db0c3;margin-bottom:2px}.search{display:flex;align-items:center;gap:6px}.search .filter-caption{position:absolute;transform:translateY(-17px)}.search input{padding-top:10px}</style>
+  <title>Market Pulse | Daily Stock Signals</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark">↗</span><span>Market Pulse</span></div>
+    <div class="status"><span id="market-dot" class="dot"></span><span id="updated">Loading market data…</span></div>
+    <button class="icon-button" id="theme-toggle" aria-label="Toggle theme">◐</button>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">DAILY RESEARCH WORKBENCH</p>
+        <h1>Signals with the reasoning attached.</h1>
+        <p class="hero-copy">A focused watchlist of liquid NSE leaders, ranked using trend, momentum, and risk. Each call includes the price evidence, current news, and a clearly labelled 12‑month scenario—not a promise.</p>
+      </div>
+      <div class="hero-actions">
+        <button id="refresh" class="primary">Refresh analysis <span aria-hidden="true">↻</span></button>
+        <button id="install" class="secondary" hidden>Install app</button>
+      </div>
+    </section>
+
+    <section class="ticker-lookup" aria-label="Analyze any NSE stock">
+      <div><p class="eyebrow">ANY NSE STOCK</p><strong>Research a ticker beyond the daily watchlist</strong><span>Enter the NSE symbol; “.NS” is added automatically.</span></div>
+      <form id="ticker-form"><label class="sr-only" for="ticker-input">NSE ticker</label><input id="ticker-input" type="text" maxlength="30" autocomplete="off" placeholder="e.g. MARUTI or TATAMOTORS" /><button class="primary" type="submit">Analyze stock</button></form>
+    </section>
+
+    <section class="notice" aria-label="Methodology notice">
+      <span class="notice-icon">i</span>
+      <span><strong>Decision support, not investment advice.</strong> Signals use daily closing prices. Forecasts are statistical scenarios built from historical return and volatility; news sentiment is context only. Verify filings, valuation and suitability before trading.</span>
+    </section>
+
+    <section class="summary-grid" aria-label="Market summary">
+      <article class="metric"><span>Coverage</span><strong id="coverage">10 / 10</strong><small>liquid NSE equities</small></article>
+      <article class="metric"><span>Positive signals</span><strong id="positive">—</strong><small>Buy / accumulate</small></article>
+      <article class="metric"><span>Median 12m scenario</span><strong id="median">—</strong><small>base-case, annualized</small></article>
+      <article class="metric"><span>Risk regime</span><strong id="regime">—</strong><small>watchlist dispersion</small></article>
+    </section>
+
+    <section class="controls" aria-label="Dashboard filters">
+      <div class="tabs" role="tablist" aria-label="Signal filter">
+        <button role="tab" aria-selected="true" data-filter="all">All signals</button>
+        <button role="tab" aria-selected="false" data-filter="BUY">Buy</button>
+        <button role="tab" aria-selected="false" data-filter="HOLD">Hold</button>
+        <button role="tab" aria-selected="false" data-filter="REDUCE">Reduce</button>
+      </div>
+      <label class="search"><span class="filter-caption">FILTER TOP-10</span><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Filter the daily watchlist" /></label>
+      <label class="select-label">Sort <select id="sort"><option value="score">Highest signal</option><option value="upside">12m base upside</option><option value="ticker">Ticker A–Z</option></select></label>
+    </section>
+
+    <section aria-labelledby="rankings-title">
+      <div class="section-heading"><div><p class="eyebrow">DAILY RANKING</p><h2 id="rankings-title">Top opportunities in coverage</h2></div><span id="data-note">Loading…</span></div>
+      <div class="table-wrap"><table><thead><tr><th>#</th><th>Company</th><th>Last price</th><th>Today</th><th>Signal</th><th>12m base case</th><th>Confidence</th><th></th></tr></thead><tbody id="stock-table"></tbody></table></div>
+    </section>
+
+    <section class="detail-layout" aria-live="polite">
+      <aside class="method-card">
+        <p class="eyebrow">HOW THE SIGNAL WORKS</p>
+        <h2>Simple, inspectable rules</h2>
+        <ol>
+          <li><strong>Trend (45%)</strong><br>Close versus 20- and 50-day moving averages.</li>
+          <li><strong>Momentum (30%)</strong><br>14-day RSI and MACD direction; extremes are penalized.</li>
+          <li><strong>Risk (25%)</strong><br>Volatility and drawdown discipline.</li>
+        </ol>
+        <p class="method-foot">Forecast uses annualized log-return and volatility over the latest year. Bull/base/bear are scenario bands, not price targets.</p>
+      </aside>
+    </section>
+  </main>
+  <dialog id="analysis-modal" aria-label="Stock analysis"><button id="modal-close" type="button" aria-label="Close analysis">× Close</button><article class="detail-card" id="detail-card"></article></dialog>
+  <footer><span>Market Pulse</span><span>Data: Yahoo Finance price & news feeds when available · Values in INR</span><span id="footer-date"></span></footer>
+  <script src="app.js"></script>
+</body>
+</html>
