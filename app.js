@@ -1,9 +1,12 @@
 const $ = selector => document.querySelector(selector);
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 const percent = value => `${value >= 0 ? '+' : ''}${Number(value || 0).toFixed(2)}%`;
-const LEADERS_CACHE_KEY = 'market-pulse-nse-leaders-v27';
-const STOCK_CACHE_PREFIX = 'market-pulse-nse-stock-v27:';
-const state = { leaders: [], selected: null, universeCount: 0 };
+const LEADERS_CACHE_KEY = 'market-pulse-nse-leaders-v28';
+const STOCK_CACHE_PREFIX = 'market-pulse-nse-stock-v28:';
+const WATCHLIST_KEY = 'market-pulse-watchlist-v1';
+const WATCH_ALERTS_KEY = 'market-pulse-watch-alerts-v1';
+const MAX_WATCHLIST_SIZE = 8;
+const state = { leaders: [], selected: null, universeCount: 0, watchlist: [], watchRows: [] };
 
 function safe(text) {
   return String(text ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
@@ -62,7 +65,7 @@ function renderLeaders() {
       <td class="${stock.pChange >= 0 ? 'positive' : 'negative'}">${percent(stock.pChange)}</td>
       <td><span class="signal ${stock.signal}">${stock.signal}</span></td>
       <td><span class="risk-badge">${stock.risk}</span></td>
-      <td><button class="review-button" data-review="${safe(stock.symbol)}" type="button">Review</button></td>
+      <td class="stock-actions"><button class="review-button" data-review="${safe(stock.symbol)}" type="button">Review</button><button class="decision-button" data-decision="${safe(stock.symbol)}" type="button">Decision</button><button class="watch-button" data-watch="${safe(stock.symbol)}" type="button">Watch</button></td>
     </tr>`).join('');
   $('#universe-count').textContent = state.universeCount || '-';
   $('#buy-count').textContent = leaders.filter(stock => stock.signal === 'BUY').length;
@@ -156,6 +159,7 @@ async function refresh() {
   } finally {
     button.disabled = false;
     button.textContent = 'Refresh market data';
+    void refreshWatchlist();
   }
 }
 
@@ -187,6 +191,34 @@ function chart(metrics) {
 function reviewContent(metrics) {
   const source = safe(metrics.dataSource || 'NSE');
   return `<div class="modal-body"><div class="modal-title"><div><h2>${safe(metrics.name)}</h2><p>${safe(metrics.symbol)} - ${source} last price ${money.format(metrics.lastPrice)}</p></div><span class="signal ${metrics.signal}">${metrics.signal}</span></div><div class="summary-cards"><article><span>Daily movement</span><strong class="${metrics.pChange >= 0 ? 'positive' : 'negative'}">${percent(metrics.pChange)}</strong></article><article><span>Momentum score</span><strong>${metrics.score}/100</strong></article><article><span>Trend (20 days)</span><strong class="${metrics.trend >= 0 ? 'positive' : 'negative'}">${percent(metrics.trend)}</strong></article><article><span>Risk</span><strong>${metrics.risk}</strong></article></div><div class="review-grid"><section class="detail-section"><h3>Why this ${metrics.signal} signal?</h3><ul><li>Today's ${source} move is <b>${percent(metrics.pChange)}</b>; stronger positive momentum adds to the score.</li><li>Current daily range is <b>${metrics.rangePct.toFixed(2)}%</b>; wider ranges increase trading risk.</li><li>The price is ${metrics.yearHigh ? `${(metrics.lastPrice / metrics.yearHigh * 100).toFixed(1)}% of its 52-week high` : 'being evaluated from its current range'}.</li><li>Score 70+ is a BUY momentum setup; 45-69 is HOLD/watch; below 45 is REDUCE.</li></ul><div class="levels"><div><span>Support</span><strong>${money.format(metrics.support)}</strong></div><div><span>Resistance</span><strong>${money.format(metrics.resistance)}</strong></div><div><span>52-week high</span><strong>${money.format(metrics.yearHigh || 0)}</strong></div><div><span>52-week low</span><strong>${money.format(metrics.yearLow || 0)}</strong></div></div></section><section class="detail-section"><h3>Profit / loss scenario</h3><p>Modelled from recent ${source} price trend and volatility. It is not a price target.</p><div class="calculator"><label>Units<input id="units-input" type="number" value="1" min="1" step="1"></label><button class="primary-button" id="calculate-return" type="button">Calculate</button></div><div class="calc-result" id="calc-result">Enter units to estimate 6- and 12-month base, bull, and bear outcomes.</div></section></div><section class="detail-section"><h3>Price trend</h3>${chart(metrics)}</section><section class="detail-section announcements"><h3>${safe(metrics.symbol)} company disclosures</h3><div id="announcements">Loading company disclosures...</div></section></div>`;
+}
+
+function decisionContent(metrics) {
+  const source = safe(metrics.dataSource || 'market data');
+  const nearHigh = metrics.yearHigh ? metrics.lastPrice / metrics.yearHigh * 100 : 0;
+  const supports = [];
+  const cautions = [];
+  if (metrics.pChange > 0) supports.push(`Price is up ${percent(metrics.pChange)} today, which supports short-term momentum.`);
+  else cautions.push(`Price is down ${percent(metrics.pChange)} today, so momentum is currently weak.`);
+  if (metrics.trend > 0) supports.push(`The recent 20-day trend is ${percent(metrics.trend)}, indicating improving price action.`);
+  else cautions.push(`The recent 20-day trend is ${percent(metrics.trend)}; wait for price action to stabilise.`);
+  if (metrics.rangePct <= 2.5) supports.push(`The current daily range is ${metrics.rangePct.toFixed(2)}%, which is comparatively controlled.`);
+  else cautions.push(`The ${metrics.rangePct.toFixed(2)}% daily range means larger possible swings and higher timing risk.`);
+  if (nearHigh >= 92) cautions.push(`The price is already ${nearHigh.toFixed(1)}% of its 52-week high, so a pullback remains possible.`);
+  else if (nearHigh) supports.push(`The price is ${nearHigh.toFixed(1)}% of its 52-week high, leaving room below the prior peak.`);
+  if (!supports.length) supports.push('No strong momentum support is visible in the available price data.');
+  if (!cautions.length) cautions.push('No major price-action caution was triggered, but market and company risks still apply.');
+  const headline = metrics.signal === 'BUY'
+    ? 'Momentum supports a monitored buy setup — not a guaranteed buy.'
+    : metrics.signal === 'HOLD'
+      ? 'Watch setup — wait for stronger confirmation before increasing exposure.'
+      : 'Avoid adding on current momentum — reassess after price action improves.';
+  const action = metrics.signal === 'BUY'
+    ? `If buying, consider a staggered entry and define an exit level below support (${money.format(metrics.support)}).`
+    : metrics.signal === 'HOLD'
+      ? `If holding, monitor resistance at ${money.format(metrics.resistance)} and avoid treating this as a fresh-entry signal.`
+      : `If not buying, wait for a stronger trend and a signal above HOLD before reassessing.`;
+  return `<div class="modal-body"><div class="modal-title"><div><h2>${safe(metrics.name)}</h2><p>${safe(metrics.symbol)} · ${source} · ${money.format(metrics.lastPrice)}</p></div><span class="signal ${metrics.signal}">${metrics.signal}</span></div><section class="decision-hero"><span>TRADE DECISION</span><h3>${headline}</h3><p>${action}</p></section><div class="summary-cards"><article><span>Signal score</span><strong>${metrics.score}/100</strong></article><article><span>Today</span><strong class="${metrics.pChange >= 0 ? 'positive' : 'negative'}">${percent(metrics.pChange)}</strong></article><article><span>20-day trend</span><strong class="${metrics.trend >= 0 ? 'positive' : 'negative'}">${percent(metrics.trend)}</strong></article><article><span>Risk</span><strong>${metrics.risk}</strong></article></div><div class="review-grid"><section class="detail-section"><h3>Why someone may consider buying</h3><ul>${supports.map(reason => `<li>${safe(reason)}</li>`).join('')}</ul><h3 class="decision-subhead">Why someone may wait or avoid buying</h3><ul>${cautions.map(reason => `<li>${safe(reason)}</li>`).join('')}</ul></section><section class="detail-section"><h3>Price plan</h3><div class="levels"><div><span>Current price</span><strong>${money.format(metrics.lastPrice)}</strong></div><div><span>Support / risk line</span><strong>${money.format(metrics.support)}</strong></div><div><span>Resistance / confirmation</span><strong>${money.format(metrics.resistance)}</strong></div><div><span>52-week high</span><strong>${money.format(metrics.yearHigh || 0)}</strong></div></div><p>Use position sizing, your own stop-loss plan, company results, valuation and market conditions. This is research, not investment advice.</p></section></div><section class="detail-section"><h3>Price trend and pointer</h3>${chart(metrics)}</section><section class="detail-section announcements"><h3>${safe(metrics.symbol)} company disclosures</h3><div id="announcements">Loading company disclosures...</div></section></div>`;
 }
 
 function setCalculator(metrics) {
@@ -250,37 +282,37 @@ function bindChart(metrics) {
   svg.addEventListener('pointerleave', () => { tip.style.opacity = '0'; cross.setAttribute('visibility', 'hidden'); point.setAttribute('visibility', 'hidden'); });
 }
 
-function fillReview(raw, symbol, usingSavedData = false) {
+function fillReview(raw, symbol, usingSavedData = false, mode = 'review') {
   const fallback = state.leaders.find(item => item.symbol === symbol) || {};
   const metrics = historicalMetrics(scoreStock({ ...fallback, ...raw.stock, history: raw.history || [] }));
   state.selected = metrics;
-  $('#modal-kicker').textContent = `${metrics.symbol} - ${usingSavedData ? 'SAVED ' : ''}${metrics.dataSource || 'MARKET DATA'} STOCK REVIEW`;
-  $('#modal-content').innerHTML = reviewContent(metrics);
-  setCalculator(metrics);
+  $('#modal-kicker').textContent = `${metrics.symbol} - ${usingSavedData ? 'SAVED ' : ''}${mode === 'decision' ? 'TRADE DECISION' : `${metrics.dataSource || 'MARKET DATA'} STOCK REVIEW`}`;
+  $('#modal-content').innerHTML = mode === 'decision' ? decisionContent(metrics) : reviewContent(metrics);
+  if (mode === 'review') setCalculator(metrics);
   bindChart(metrics);
   const panel = $('#announcements');
   panel.innerHTML = (raw.announcements || []).slice(0, 4).map(item => `<a href="${safeUrl(item.url)}" target="_blank" rel="noopener">${safe(item.title)}<small>${safe(item.date || 'NSE disclosure')}</small></a>`).join('') || '<p>No recent company disclosures were returned for this ticker.</p>';
 }
 
-async function openReview(symbol) {
+async function openReview(symbol, mode = 'review') {
   const ticker = String(symbol || '').toUpperCase().replace(/[^A-Z0-9&-]/g, '');
   if (!ticker) return;
   const modal = $('#review-modal');
-  $('#modal-content').innerHTML = '<div class="modal-body">Loading stock review...</div>';
+  $('#modal-content').innerHTML = `<div class="modal-body">Loading stock ${mode === 'decision' ? 'decision' : 'review'}...</div>`;
   if (!modal.open) modal.showModal();
   try {
     const raw = await api('stock', ticker);
     if (!raw?.stock?.lastPrice) throw new Error('The market-data source returned no current price for this ticker');
     writeCache(`${STOCK_CACHE_PREFIX}${ticker}`, { raw, savedAt: new Date().toISOString() });
-    fillReview(raw, ticker);
+    fillReview(raw, ticker, false, mode);
   } catch (error) {
     const cached = readCache(`${STOCK_CACHE_PREFIX}${ticker}`);
     const fallback = state.leaders.find(item => item.symbol === ticker);
     if (cached?.raw?.stock) {
-      fillReview(cached.raw, ticker, true);
+      fillReview(cached.raw, ticker, true, mode);
       $('#market-status').textContent = `Market feed delayed - review uses this device's saved ${ticker} result`;
     } else if (fallback?.lastPrice) {
-      fillReview({ stock: fallback, history: [], announcements: [] }, ticker, true);
+      fillReview({ stock: fallback, history: [], announcements: [] }, ticker, true, mode);
       $('#market-status').textContent = `Market feed delayed - review uses the saved top-10 ${ticker} quote`;
     } else {
       $('#modal-content').innerHTML = `<div class="modal-body"><h2>Stock review is temporarily delayed</h2><p>${safe(error.message)}. The dashboard is still responsive; try this ticker again shortly.</p><p><a href="https://www.nseindia.com/get-quotes/equity?symbol=${encodeURIComponent(ticker)}" target="_blank" rel="noopener">Open ${safe(ticker)} on the official NSE website</a></p></div>`;
@@ -292,13 +324,7 @@ function cleanTicker(value) {
   return String(value || '').toUpperCase().replace(/[^A-Z0-9&-]/g, '');
 }
 
-function extractTicker(question) {
-  const blocked = new Set(['A', 'ADVICE', 'AN', 'AND', 'ANY', 'ARE', 'ASK', 'AT', 'ABOUT', 'ANALYSE', 'ANALYSIS', 'ANNOUNCEMENT', 'ANNOUNCEMENTS', 'BAD', 'BE', 'BEST', 'BUY', 'CAN', 'COMPANY', 'COULD', 'CURRENT', 'DETAILS', 'DID', 'DO', 'DOES', 'EARNINGS', 'EQUITY', 'EXPLAIN', 'FOR', 'FORECAST', 'FROM', 'FUNDAMENTAL', 'GIVE', 'GOOD', 'HIGH', 'HOLD', 'HOW', 'I', 'IN', 'INVEST', 'INVESTING', 'IS', 'IT', 'LOSS', 'LOW', 'MARKET', 'MAY', 'ME', 'MONTH', 'MY', 'NEWS', 'NSE', 'OF', 'ON', 'PLEASE', 'PREDICTION', 'PRICE', 'PROFIT', 'RESISTANCE', 'RETURN', 'RETURNS', 'RISK', 'SCENARIO', 'SCORE', 'SHOULD', 'SHOW', 'SIGNAL', 'STOCK', 'SUPPORT', 'THE', 'THIS', 'TELL', 'TICKER', 'TODAY', 'TO', 'TREND', 'WE', 'WHAT', 'WHICH', 'WHY', 'WILL', 'WITH', 'WOULD', 'YOUR']);
-  const words = String(question || '').toUpperCase().match(/[A-Z][A-Z0-9&-]{1,29}/g) || [];
-  return [...words].reverse().find(word => !blocked.has(word)) || '';
-}
-
-async function loadAssistantStock(symbol) {
+async function loadStockAnalysis(symbol) {
   const ticker = cleanTicker(symbol);
   if (!ticker) return null;
   try {
@@ -323,36 +349,160 @@ async function loadAssistantStock(symbol) {
   }
 }
 
-function assistantReply(question, stock = state.selected) {
-  const q = question.toLowerCase();
-  if (!stock) {
-    if (q.includes('support') || q.includes('resistance')) return 'Support is a price zone where buying has recently appeared; resistance is a zone where selling has appeared. Enter an NSE ticker to calculate its current levels.';
-    if (q.includes('risk') || q.includes('volatility')) return 'Risk describes how widely a stock price can move. This dashboard marks a wider daily price range as higher trading risk. Enter a ticker for its current risk reading.';
-    if (q.includes('score') || q.includes('signal') || q.includes('buy') || q.includes('hold')) return 'The signal score starts at 50, then adds or subtracts points for today\'s price move, the width of today\'s trading range, and the distance from the 52-week high. 70+ is BUY, 45-69 is HOLD, and below 45 is REDUCE. Enter a ticker for a live score.';
-    if (q.includes('profit') || q.includes('return') || q.includes('scenario') || q.includes('month')) return 'A scenario is an estimate, not a promise. The dashboard uses recent trend and volatility to show base, bull, and bear 6- and 12-month outcomes after you enter a ticker and units.';
-    return 'I can help with any NSE ticker or a general market question. Enter a ticker above, or write it in your question, for example: "MTARTECH - explain risk".';
-  }
-  const source = stock.dataSource || 'NSE';
-  if (q.includes('support') || q.includes('resistance')) return `${stock.symbol}: support is ${money.format(stock.support)} and resistance is ${money.format(stock.resistance)}. These are recent ${source} price levels, not guarantees.`;
-  if (q.includes('risk') || q.includes('volatility')) return `${stock.symbol} is marked ${stock.risk} risk because its current daily range is ${stock.rangePct.toFixed(2)}%. Wider ranges mean larger potential daily swings.`;
-  if (q.includes('profit') || q.includes('return') || q.includes('scenario') || q.includes('month')) return `${stock.symbol}'s 12-month base scenario is ${percent(stock.base)}. Open Review to use the calculator with your units for base, bull, and bear outcomes.`;
-  if (q.includes('score') || q.includes('signal') || q.includes('why') || q.includes('buy') || q.includes('hold')) return `${stock.symbol} is ${stock.signal} at ${stock.score}/100. Today's ${source} move is ${percent(stock.pChange)}, its daily range is ${stock.rangePct.toFixed(2)}%, and it is ${stock.yearHigh ? `${(stock.lastPrice / stock.yearHigh * 100).toFixed(1)}% of its 52-week high` : 'being evaluated from its current range'}.`;
-  if (q.includes('trend') || q.includes('price')) return `${stock.symbol} last price is ${money.format(stock.lastPrice)}. Its recent trend is ${percent(stock.trend)} and today it moved ${percent(stock.pChange)}.`;
-  if (q.includes('news') || q.includes('announcement')) return `Open Review for ${stock.symbol} to see company announcements when NSE returns them, and verify material information in the disclosure itself.`;
-  return `For ${stock.symbol}, ask about its signal, score, trend, price, support/resistance, risk, NSE announcements, or scenario.`;
+function readWatchlist() {
+  const list = readCache(WATCHLIST_KEY);
+  return Array.isArray(list) ? list.map(item => ({
+    symbol: cleanTicker(item.symbol),
+    target: Number(item.target) > 0 ? Number(item.target) : null,
+    stop: Number(item.stop) > 0 ? Number(item.stop) : null
+  })).filter(item => item.symbol).slice(0, MAX_WATCHLIST_SIZE) : [];
 }
 
-function addChat(text, kind) {
-  const message = document.createElement('p');
-  message.className = kind === 'user' ? 'user-message' : 'assistant-message';
-  message.textContent = text;
-  $('#chat-history').append(message);
-  $('#chat-history').scrollTop = $('#chat-history').scrollHeight;
+function saveWatchlist(items) {
+  state.watchlist = items.slice(0, MAX_WATCHLIST_SIZE);
+  writeCache(WATCHLIST_KEY, state.watchlist);
+}
+
+function cachedStockAnalysis(symbol) {
+  const cached = readCache(`${STOCK_CACHE_PREFIX}${symbol}`);
+  const leader = state.leaders.find(item => item.symbol === symbol) || {};
+  if (cached?.raw?.stock) return historicalMetrics(scoreStock({ ...leader, ...cached.raw.stock, history: cached.raw.history || [] }));
+  return leader.lastPrice ? historicalMetrics(scoreStock({ ...leader, history: [] })) : null;
+}
+
+function alertForWatch(item, metrics) {
+  if (!metrics?.lastPrice) return null;
+  if (item.target && metrics.lastPrice >= item.target) return { key: `${item.symbol}:target:${item.target}`, message: `${item.symbol} reached your target of ${money.format(item.target)}. Last price: ${money.format(metrics.lastPrice)}.` };
+  if (item.stop && metrics.lastPrice <= item.stop) return { key: `${item.symbol}:stop:${item.stop}`, message: `${item.symbol} reached your stop level of ${money.format(item.stop)}. Last price: ${money.format(metrics.lastPrice)}.` };
+  return null;
+}
+
+function updateAlertButton() {
+  const button = $('#enable-device-alerts');
+  if (!button) return;
+  if (!('Notification' in window)) {
+    button.disabled = true;
+    button.textContent = 'Notifications unsupported';
+  } else if (Notification.permission === 'granted') {
+    button.disabled = true;
+    button.textContent = 'Device alerts enabled';
+  } else if (Notification.permission === 'denied') {
+    button.disabled = true;
+    button.textContent = 'Notifications blocked';
+  }
+}
+
+function notifyDevice(message) {
+  if ('Notification' in window && Notification.permission === 'granted') new Notification('Market Pulse alert', { body: message, icon: './icon.svg' });
+}
+
+function processWatchAlerts(rows) {
+  const sent = readCache(WATCH_ALERTS_KEY) || {};
+  const activeKeys = new Set();
+  const newMessages = [];
+  rows.forEach(row => {
+    const alert = alertForWatch(row, row.metrics);
+    if (!alert) return;
+    activeKeys.add(alert.key);
+    if (!sent[alert.key]) {
+      sent[alert.key] = { at: new Date().toISOString(), price: row.metrics.lastPrice };
+      newMessages.push(alert.message);
+      notifyDevice(alert.message);
+    }
+  });
+  Object.keys(sent).forEach(key => { if (!activeKeys.has(key)) delete sent[key]; });
+  writeCache(WATCH_ALERTS_KEY, sent);
+  if (newMessages.length) $('#watchlist-note').textContent = newMessages.join(' ');
+}
+
+function renderWatchlist(rows = state.watchRows) {
+  const list = $('#watchlist-items');
+  const note = $('#watchlist-note');
+  if (!list || !note) return;
+  if (!state.watchlist.length) {
+    list.innerHTML = '<p class="watchlist-empty">No stocks watched yet. Add an NSE ticker, a target price, or a stop level.</p>';
+    note.textContent = `Saved only on this device · maximum ${MAX_WATCHLIST_SIZE} stocks`;
+    return;
+  }
+  const indexed = new Map(rows.map(row => [row.symbol, row]));
+  list.innerHTML = state.watchlist.map(item => {
+    const row = indexed.get(item.symbol) || { ...item, metrics: cachedStockAnalysis(item.symbol) };
+    const metrics = row.metrics;
+    const alert = alertForWatch(item, metrics);
+    const levels = `${item.target ? `Target ${money.format(item.target)}` : 'No target'} · ${item.stop ? `Stop ${money.format(item.stop)}` : 'No stop'}`;
+    return `<article class="watch-row ${alert ? 'watch-alert-row' : ''}"><div><strong>${safe(item.symbol)}</strong><small>${metrics ? `${safe(metrics.name)} · ${safe(metrics.dataSource || 'market data')}` : 'Loading market data…'}</small></div><div><span>Last price</span><strong>${metrics ? money.format(metrics.lastPrice) : '—'}</strong><small class="${metrics?.pChange >= 0 ? 'positive' : 'negative'}">${metrics ? percent(metrics.pChange) : '—'}</small></div><div><span>Signal / risk</span><strong>${metrics ? `${safe(metrics.signal)} · ${safe(metrics.risk)}` : '—'}</strong><small>${levels}</small></div><div class="watch-actions"><button class="review-button" data-review="${safe(item.symbol)}" type="button">Review</button><button class="decision-button" data-decision="${safe(item.symbol)}" type="button">Decision</button><button class="watch-edit" data-edit-watch="${safe(item.symbol)}" type="button">Edit</button><button class="watch-remove" data-remove-watch="${safe(item.symbol)}" type="button">Remove</button></div></article>`;
+  }).join('');
+  note.textContent = 'Alerts are checked while this dashboard is open or refreshed.';
+}
+
+async function refreshWatchlist() {
+  if (!state.watchlist.length) { state.watchRows = []; renderWatchlist(); return; }
+  const items = state.watchlist.map(item => ({ ...item }));
+  state.watchRows = items.map(item => ({ ...item, metrics: cachedStockAnalysis(item.symbol) }));
+  renderWatchlist();
+  const rows = await Promise.all(items.map(async item => {
+    try { return { ...item, metrics: await loadStockAnalysis(item.symbol) }; }
+    catch (error) { return { ...item, metrics: cachedStockAnalysis(item.symbol), error }; }
+  }));
+  state.watchRows = rows;
+  renderWatchlist(rows);
+  processWatchAlerts(rows);
+}
+
+function editWatch(symbol) {
+  const item = state.watchlist.find(entry => entry.symbol === symbol);
+  if (!item) return;
+  $('#watch-ticker').value = item.symbol;
+  $('#watch-target').value = item.target || '';
+  $('#watch-stop').value = item.stop || '';
+  $('#watch-submit').textContent = 'Update watch';
+  $('#watch-ticker').focus();
+}
+
+function addOrUpdateWatch(symbol, target = null, stop = null) {
+  const ticker = cleanTicker(symbol);
+  if (!ticker) return;
+  const existingIndex = state.watchlist.findIndex(item => item.symbol === ticker);
+  if (existingIndex < 0 && state.watchlist.length >= MAX_WATCHLIST_SIZE) {
+    $('#watchlist-note').textContent = `Watchlist limit reached (${MAX_WATCHLIST_SIZE}). Remove a stock before adding another.`;
+    return;
+  }
+  const existing = existingIndex >= 0 ? state.watchlist[existingIndex] : null;
+  const preserveLevels = target === null && stop === null;
+  const item = {
+    symbol: ticker,
+    target: preserveLevels ? existing?.target || null : (Number(target) > 0 ? Number(target) : null),
+    stop: preserveLevels ? existing?.stop || null : (Number(stop) > 0 ? Number(stop) : null)
+  };
+  const next = [...state.watchlist];
+  if (existingIndex >= 0) next[existingIndex] = item;
+  else next.push(item);
+  saveWatchlist(next);
+  const sent = readCache(WATCH_ALERTS_KEY) || {};
+  Object.keys(sent).filter(key => key.startsWith(`${ticker}:`)).forEach(key => delete sent[key]);
+  writeCache(WATCH_ALERTS_KEY, sent);
+  $('#watch-submit').textContent = 'Add to watchlist';
+  void refreshWatchlist();
 }
 
 document.addEventListener('click', event => {
-  const button = event.target.closest('[data-review]');
-  if (button) openReview(button.dataset.review);
+  const review = event.target.closest('[data-review]');
+  if (review) return openReview(review.dataset.review);
+  const decision = event.target.closest('[data-decision]');
+  if (decision) return openReview(decision.dataset.decision, 'decision');
+  const watch = event.target.closest('[data-watch]');
+  if (watch) return addOrUpdateWatch(watch.dataset.watch);
+  const edit = event.target.closest('[data-edit-watch]');
+  if (edit) return editWatch(edit.dataset.editWatch);
+  const remove = event.target.closest('[data-remove-watch]');
+  if (remove) {
+    const ticker = remove.dataset.removeWatch;
+    saveWatchlist(state.watchlist.filter(item => item.symbol !== ticker));
+    const sent = readCache(WATCH_ALERTS_KEY) || {};
+    Object.keys(sent).filter(key => key.startsWith(`${ticker}:`)).forEach(key => delete sent[key]);
+    writeCache(WATCH_ALERTS_KEY, sent);
+    void refreshWatchlist();
+  }
 });
 
 $('#refresh').addEventListener('click', refresh);
@@ -367,35 +517,25 @@ $('#investment-form').addEventListener('submit', event => {
   button.disabled = true;
   button.textContent = 'Calculating…';
   $('#investment-result').textContent = `Loading ${ticker} market data…`;
-  loadAssistantStock(ticker)
+  loadStockAnalysis(ticker)
     .then(stock => renderInvestmentScenario(stock, units))
     .catch(error => { $('#investment-result').textContent = `Could not calculate ${ticker}: ${error.message}. Try again shortly.`; })
     .finally(() => { button.disabled = false; button.textContent = 'Calculate returns'; });
 });
 $('#modal-close').addEventListener('click', () => $('#review-modal').close());
 $('#review-modal').addEventListener('click', event => { if (event.target === $('#review-modal')) $('#review-modal').close(); });
-$('#chat-form').addEventListener('submit', event => {
+$('#watchlist-form').addEventListener('submit', event => {
   event.preventDefault();
-  const input = $('#chat-input');
-  const question = input.value.trim();
-  if (!question) return;
-  addChat(question, 'user');
-  const tickerInput = $('#assistant-ticker');
-  const requestedTicker = cleanTicker(tickerInput.value) || extractTicker(question);
-  const submit = $('#chat-submit');
-  if (requestedTicker && state.selected?.symbol !== requestedTicker) {
-    submit.disabled = true;
-    submit.textContent = 'Checking data...';
-    addChat(`Looking up ${requestedTicker}...`, 'assistant');
-    loadAssistantStock(requestedTicker)
-      .then(stock => addChat(assistantReply(question, stock), 'assistant'))
-      .catch(error => addChat(`I could not load ${requestedTicker} right now: ${error.message}. You can still ask general questions, or try again shortly.`, 'assistant'))
-      .finally(() => { submit.disabled = false; submit.textContent = 'Ask'; });
-  } else {
-    addChat(assistantReply(question), 'assistant');
-  }
-  input.value = '';
+  addOrUpdateWatch($('#watch-ticker').value, $('#watch-target').value, $('#watch-stop').value);
+});
+$('#enable-device-alerts').addEventListener('click', async () => {
+  if (!('Notification' in window)) return;
+  await Notification.requestPermission();
+  updateAlertButton();
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+state.watchlist = readWatchlist();
+renderWatchlist();
+updateAlertButton();
 refresh();

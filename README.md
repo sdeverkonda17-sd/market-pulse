@@ -13,7 +13,7 @@ The screen and every stock-review popup name the source. Yahoo Finance fallback 
 
 ## Deploy on Windows
 
-1. Download `market-pulse-dashboard-calculator-v27.zip` and right-click it in **Downloads**.
+1. Download `market-pulse-dashboard-watchlist-v28.zip` and right-click it in **Downloads**.
 2. Choose **Extract All**, then **Extract**.
 3. In GitHub, open your `market-pulse` repository.
 4. Choose **Add file → Upload files**.
@@ -41,10 +41,17 @@ Twelve Data batch requests use one API credit per requested symbol, so a full to
 
 1. Open the `.netlify.app` link.
 2. The table displays the daily top 10 and the current source label.
-3. Click **Review** or a stock row to see signal reasoning, risk, support/resistance, price trend and return scenarios.
+3. Click **Review** to see signal reasoning, risk, support/resistance, price trend and return scenarios. Click **Decision** for a plain-language buying case, reasons to wait, and key price levels.
 4. Enter any NSE ticker in **Analyse a specific ticker** for a separate review.
-5. In the Research Assistant, enter an optional ticker and ask about score, trend, risk, support/resistance or a return scenario.
+5. In **My Watchlist & Alerts**, add a ticker and optional target/stop levels. Use **Enable phone alerts** after installing the app on your phone.
 6. In **Investment Scenario Calculator**, enter a ticker and units to buy. It shows the current price per unit, total investment, and base/bull/bear estimates for 1, 3, 6, and 12 months.
+
+## Watchlist and alerts
+
+- The watchlist is stored privately in the browser on that device; it does not require an account and does not sync automatically between devices.
+- Up to eight stocks can be watched. Their price, daily change, signal, risk, target and stop level refresh while the dashboard is open.
+- Tap **Enable phone alerts** from the installed Android/iPhone web app and allow notifications. Alerts are checked while the app is open or refreshed.
+- SMS and WhatsApp messages need a separate paid provider such as Twilio. This version does not send your ticker, prices, or phone number to any messaging service.
 
 ## Market status and company updates
 
