@@ -1,180 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="theme-color" content="#07111f" />
-  <meta name="description" content="Market Pulse — transparent stock signals, news context, and 12-month scenarios." />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icon.svg" type="image/svg+xml" />
-  <link rel="stylesheet" href="styles.css" />
-  <style>#analysis-modal{width:min(900px,94vw);max-height:90vh;overflow:auto;background:#0d1b2c;color:#edf5fb;border:1px solid #20384e;border-radius:12px;padding:18px}#analysis-modal::backdrop{background:#020914aa}#modal-close{float:right;background:transparent;color:inherit;border:1px solid #20384e;border-radius:6px;padding:6px 9px}.ticker-lookup{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:16px;margin:0 0 24px;border:1px solid #20384e;border-radius:10px;background:#0d1b2c}.ticker-lookup span{display:block;color:#9db0c3;font-size:13px}.ticker-lookup form{display:flex;gap:8px}.ticker-lookup input{padding:10px;min-width:230px;border-radius:8px;border:1px solid #20384e;background:#11253a;color:#edf5fb}@media(max-width:640px){.ticker-lookup{display:block}.ticker-lookup form{margin-top:12px}.ticker-lookup input{min-width:0;width:100%}}</style>
-  <style>.filter-caption{display:block;font-size:9px;letter-spacing:.08em;color:#9db0c3;margin-bottom:2px}.search{display:flex;align-items:center;gap:6px}.search .filter-caption{position:absolute;transform:translateY(-17px)}.search input{padding-top:10px}@media(max-width:640px){main{padding:24px 14px 42px}.hero h1{font-size:34px}.hero-copy{font-size:15px}.hero-actions{white-space:normal}.hero-actions button{flex:1}.notice{font-size:12px}.summary-grid{gap:8px}.metric{padding:12px}.metric strong{font-size:20px}.controls{gap:10px}.tabs{width:100%;overflow-x:auto}.tabs button{white-space:nowrap}.search{width:100%;min-width:0}.search input{width:100%;min-width:0}.select-label{width:100%;display:flex;align-items:center;justify-content:space-between}.select-label select{width:72%}.table-wrap{margin:0 -14px;border-radius:0;border-left:0;border-right:0}table{min-width:690px;font-size:13px}th,td{padding:11px 9px}.detail-metrics{grid-template-columns:1fr}.detail-card{padding:16px}.news-grid{grid-template-columns:1fr}#analysis-modal{width:100vw;max-width:100vw;max-height:100vh;height:100vh;border-radius:0;padding:14px}.ticker-lookup form{flex-wrap:wrap}.ticker-lookup input{flex:1;min-width:0}.ticker-lookup form button{width:100%}}</style>
-  <style>.chart-actions{display:flex;gap:7px;margin:0 0 10px}.chart-actions button{background:#11253a;color:#edf5fb;border:1px solid #31506c;border-radius:7px;padding:6px 11px;font-weight:700}.chart-actions button[aria-pressed="true"]{background:#42d392;color:#032519;border-color:#42d392}.chart-actions button:focus-visible{outline:2px solid #6eafff;outline-offset:2px}</style>
-  <style>.earnings-calculator{margin:0 0 25px;padding:18px;background:#0d1b2c;border:1px solid #20384e;border-radius:11px}.earnings-calculator span{display:block;color:#9db0c3;font-size:13px}.earnings-calculator form{display:flex;gap:8px;margin-top:13px}.earnings-calculator input{min-width:180px;padding:10px;border-radius:8px;border:1px solid #31506c;background:#11253a;color:#edf5fb}.earnings-calculator #units{min-width:120px}.earnings-calculator #earnings-result{margin-top:12px;color:#d6e2ec;font-size:14px;line-height:1.6}.score-explanation{margin:8px 0 16px;padding:12px;background:#11253a;border-left:3px solid #6eafff;border-radius:7px}.score-explanation h3{margin:0 0 5px;font-size:14px}.score-explanation p{margin:5px 0;color:#c4d1dd;font-size:13px}@media(max-width:640px){.earnings-calculator form{flex-wrap:wrap}.earnings-calculator input,.earnings-calculator #units{width:100%;min-width:0}.earnings-calculator button{width:100%}}</style>
-  <style>.modal-calculator{margin:14px 0;padding:13px;background:#11253a;border:1px solid #31506c;border-radius:8px}.modal-calculator h3,.modal-calculator p{margin:0 0 7px}.modal-calculator form{display:flex;gap:8px}.modal-calculator input{padding:8px;border-radius:6px;border:1px solid #31506c;background:#07111f;color:#edf5fb}.modal-calculator #modal-return-result{margin-top:9px;line-height:1.6;color:#d6e2ec}@media(max-width:640px){.modal-calculator form{flex-wrap:wrap}.modal-calculator input,.modal-calculator button{width:100%}}</style>
-  <style>.score-guide{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.score-guide div{padding:9px;background:#0a1828;border:1px solid #31506c;border-radius:7px;color:#d6e2ec;font-size:12px}.rich-chart{filter:drop-shadow(0 8px 14px #06101b88)}@media(max-width:640px){.score-guide{grid-template-columns:1fr}}</style>
-  <style>.ticker-specific{margin-top:11px;padding-top:10px;border-top:1px solid #31506c;color:#d6e2ec;font-size:13px}.ticker-specific ul{margin:7px 0;padding-left:18px}.ticker-specific li{margin:5px 0}.ticker-specific p{margin-bottom:0}</style>
-  <style>.rich-chart{touch-action:none}.rich-chart .line{stroke:#6eafff;stroke-width:2.6}.rich-chart .grid{stroke:#52708d;stroke-opacity:.5}.rich-chart #chart-cross{stroke:#f2b84b;stroke-width:1.5;stroke-opacity:1}.rich-chart #chart-point{color:#f2b84b;stroke:#07111f;stroke-width:2}.rich-chart text{font-weight:600}</style>
-  <style>.brand small{display:block;color:#9db0c3;font-size:9px;letter-spacing:.05em;font-weight:600}.research-chat{margin:0 0 26px;padding:18px;background:#0d1b2c;border:1px solid #31506c;border-radius:11px}.research-chat span{display:block;color:#9db0c3;font-size:13px}.chat-history{max-height:230px;overflow:auto;margin:14px 0;padding-right:4px}.chat-message{max-width:88%;padding:9px 11px;margin:7px 0;border-radius:9px;font-size:13px;line-height:1.45}.chat-message.assistant{background:#11253a;color:#e7f0f8}.chat-message.user{margin-left:auto;background:#42d392;color:#032519}.research-chat form{display:flex;gap:8px}.research-chat input{flex:1;min-width:0;padding:10px;border-radius:8px;border:1px solid #31506c;background:#07111f;color:#edf5fb}@media(max-width:640px){.research-chat form{flex-wrap:wrap}.research-chat form button{width:100%}.brand small{font-size:8px}}</style>
-  <title>Market Pulse | Daily Stock Signals</title>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#10261f"><meta name="description" content="NSE daily momentum research and stock analysis.">
+  <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css">
+  <title>Market Pulse | NSE Research</title>
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><span class="brand-mark">↗</span><span>Market Pulse<small>Created by Suman Devarakonda</small></span></div>
-    <div class="status"><span id="market-dot" class="dot"></span><span id="updated">Loading market data…</span></div>
-    <button class="icon-button" id="theme-toggle" aria-label="Toggle theme">◐</button>
-  </header>
-
+  <header class="topbar"><div class="brand"><span class="brand-mark">↗</span><span>Market Pulse <small>Created by Suman Devarakonda</small></span></div><span class="market-status" id="market-status">Connecting to NSE…</span><button class="ghost-button" id="theme-toggle" type="button">Theme</button></header>
   <main>
-    <section class="hero">
-      <div>
-        <p class="eyebrow">DAILY RESEARCH WORKBENCH</p>
-        <h1>Signals with the reasoning attached.</h1>
-        <p class="hero-copy">A focused watchlist of liquid NSE leaders, ranked using trend, momentum, and risk. Each call includes the price evidence, current news, and a clearly labelled 12‑month scenario—not a promise.</p>
-      </div>
-      <div class="hero-actions">
-        <button id="refresh" class="primary">Refresh analysis <span aria-hidden="true">↻</span></button>
-        <button id="install" class="secondary" hidden>Install app</button>
-      </div>
-    </section>
-
-    <section class="ticker-lookup" aria-label="Analyze any NSE stock">
-      <div><p class="eyebrow">ANY NSE STOCK</p><strong>Research a ticker beyond the daily watchlist</strong><span>Enter the NSE symbol; “.NS” is added automatically.</span></div>
-      <form id="ticker-form"><label class="sr-only" for="ticker-input">NSE ticker</label><input id="ticker-input" type="text" maxlength="30" autocomplete="off" placeholder="e.g. MARUTI or TATAMOTORS" /><button class="primary" type="submit">Analyze stock</button></form>
-    </section>
-
-    <section class="earnings-calculator" aria-label="Investment scenario calculator">
-      <div><p class="eyebrow">INVESTMENT SCENARIO</p><strong>Estimate a potential gain or loss</strong><span>Shows 1, 3, 6 and 12-month historical-model scenarios; not guaranteed returns.</span></div>
-      <form id="earnings-form"><label class="sr-only" for="earnings-ticker">NSE ticker</label><input id="earnings-ticker" type="text" maxlength="30" placeholder="Ticker, e.g. MTARTECH" /><label class="sr-only" for="units">Number of units</label><input id="units" type="number" min="1" step="1" placeholder="Units to buy" /><button class="primary" type="submit">Calculate</button></form>
-      <div id="earnings-result" aria-live="polite"></div>
-    </section>
-
-    <section class="research-chat" aria-label="Stock research assistant">
-      <div><p class="eyebrow">RESEARCH ASSISTANT</p><strong>Ask about a stock, a signal, or a metric</strong><span>Try: “Why is this a hold?”, “What is RSI?”, “Show support and resistance”, or “Explain the 12-month scenario”.</span></div>
-      <div class="chat-history" id="chat-history" aria-live="polite"><div class="chat-message assistant">Select a stock with Review, then ask me about its score, trend, risk, chart, or scenario.</div></div>
-      <form id="research-chat-form"><label class="sr-only" for="research-question">Ask a stock research question</label><input id="research-question" type="text" maxlength="250" placeholder="Ask about the current stock or model…" /><button class="primary" type="submit">Ask</button></form>
-    </section>
-
-    <section class="notice" aria-label="Methodology notice">
-      <span class="notice-icon">i</span>
-      <span><strong>Decision support, not investment advice.</strong> Signals use daily closing prices. Forecasts are statistical scenarios built from historical return and volatility; news sentiment is context only. Verify filings, valuation and suitability before trading.</span>
-    </section>
-
-    <section class="summary-grid" aria-label="Market summary">
-      <article class="metric"><span>Coverage</span><strong id="coverage">10 / 10</strong><small>liquid NSE equities</small></article>
-      <article class="metric"><span>Positive signals</span><strong id="positive">—</strong><small>Buy / accumulate</small></article>
-      <article class="metric"><span>Median 12m scenario</span><strong id="median">—</strong><small>base-case, annualized</small></article>
-      <article class="metric"><span>Risk regime</span><strong id="regime">—</strong><small>watchlist dispersion</small></article>
-    </section>
-
-    <section class="controls" aria-label="Dashboard filters">
-      <div class="tabs" role="tablist" aria-label="Signal filter">
-        <button role="tab" aria-selected="true" data-filter="all">All signals</button>
-        <button role="tab" aria-selected="false" data-filter="BUY">Buy</button>
-        <button role="tab" aria-selected="false" data-filter="HOLD">Hold</button>
-        <button role="tab" aria-selected="false" data-filter="REDUCE">Reduce</button>
-      </div>
-      <label class="search"><span class="filter-caption">FILTER TOP-10</span><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Filter the daily watchlist" /></label>
-      <label class="select-label">Sort <select id="sort"><option value="score">Highest signal</option><option value="upside">12m base upside</option><option value="ticker">Ticker A–Z</option></select></label>
-    </section>
-
-    <section aria-labelledby="rankings-title">
-      <div class="section-heading"><div><p class="eyebrow">DAILY RANKING</p><h2 id="rankings-title">Top opportunities in coverage</h2></div><span id="data-note">Loading…</span></div>
-      <div class="table-wrap"><table><thead><tr><th>#</th><th>Company</th><th>Last price</th><th>Today</th><th>Signal</th><th>12m base case</th><th>Confidence</th><th></th></tr></thead><tbody id="stock-table"></tbody></table></div>
-    </section>
-
-    <section class="detail-layout" aria-live="polite">
-      <aside class="method-card">
-        <p class="eyebrow">HOW THE SIGNAL WORKS</p>
-        <h2>Simple, inspectable rules</h2>
-        <ol>
-          <li><strong>Trend (45%)</strong><br>Close versus 20- and 50-day moving averages.</li>
-          <li><strong>Momentum (30%)</strong><br>14-day RSI and MACD direction; extremes are penalized.</li>
-          <li><strong>Risk (25%)</strong><br>Volatility and drawdown discipline.</li>
-        </ol>
-        <p class="method-foot">Forecast uses annualized log-return and volatility over the latest year. Bull/base/bear are scenario bands, not price targets.</p>
-      </aside>
-    </section>
+    <section class="hero"><div><p class="eyebrow">NSE DAILY MOMENTUM SCREENER</p><h1>Top 10 NSE leaders, with the reasoning visible.</h1><p>Daily leaders are ranked from the official NIFTY 50 index feed by live percentage change. Review any ticker for price action, risk, support/resistance, NSE disclosures, and transparent scenario context.</p></div><button class="primary-button" id="refresh" type="button">Refresh NSE data</button></section>
+    <section class="disclaimer"><strong>Research only.</strong> This dashboard highlights daily momentum; it is not investment advice or a guarantee of future return.</section>
+    <section class="lookup-card"><div><p class="eyebrow">ANY NSE EQUITY</p><h2>Analyse a specific ticker</h2><p>Enter the NSE symbol without “.NS”, for example <code>MTARTECH</code>, <code>RELIANCE</code>, or <code>TATAMOTORS</code>.</p></div><form id="ticker-form"><label for="ticker-input">NSE ticker</label><div class="input-row"><input id="ticker-input" autocomplete="off" maxlength="30" placeholder="e.g. MTARTECH" required><button class="primary-button" type="submit">Analyse stock</button></div></form></section>
+    <section class="metric-grid"><article><span>Universe</span><strong id="universe-count">—</strong><small>NIFTY 50 live constituents</small></article><article><span>Buy setups</span><strong id="buy-count">—</strong><small>daily momentum score ≥ 70</small></article><article><span>Top mover</span><strong id="top-mover">—</strong><small>current NSE session</small></article><article><span>Data source</span><strong>NSE</strong><small>official index & quote feeds</small></article></section>
+    <section class="screening"><div class="section-title"><div><p class="eyebrow">LIVE RANKING</p><h2>Today’s top 10 NIFTY 50 movers</h2></div><span id="data-note">Loading…</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Company</th><th>Last price</th><th>Today</th><th>Signal</th><th>Risk</th><th>Review</th></tr></thead><tbody id="stock-table"></tbody></table></div></section>
+    <section class="assistant-card"><div><p class="eyebrow">RESEARCH ASSISTANT</p><h2>Ask about the selected stock</h2><p>Try “Why is this a buy?”, “What is support?”, “Explain risk”, or “What is the scenario?”</p></div><div class="chat-history" id="chat-history" aria-live="polite"><p class="assistant-message">Open a Review first. I’ll then explain that ticker’s score and levels.</p></div><form id="chat-form" class="input-row"><label class="sr-only" for="chat-input">Ask a research question</label><input id="chat-input" maxlength="250" placeholder="Ask about the selected stock…"><button class="primary-button" type="submit">Ask</button></form></section>
   </main>
-  <dialog id="analysis-modal" aria-label="Stock analysis"><button id="modal-close" type="button" aria-label="Close analysis">× Close</button><article class="detail-card" id="detail-card"></article></dialog>
-  <footer><span>Market Pulse · Built by Suman Devarakonda</span><span>Data: Yahoo Finance price & news feeds when available · Values in INR</span><span id="footer-date"></span></footer>
+  <dialog id="review-modal"><div class="modal-header"><span id="modal-kicker">NSE STOCK REVIEW</span><button id="modal-close" class="ghost-button" type="button">Close</button></div><div id="modal-content"></div></dialog>
+  <footer>Market Pulse · Created by Suman Devarakonda · Official market data from NSE India when available.</footer>
   <script src="app.js"></script>
-  <script>
-    document.querySelector('#earnings-form').addEventListener('submit', async (event) => {
-      event.preventDefault();
-      const raw = document.querySelector('#earnings-ticker').value.trim().toUpperCase().replace(/\s/g, '');
-      const units = Number(document.querySelector('#units').value);
-      const result = document.querySelector('#earnings-result');
-      if (!raw || !Number.isFinite(units) || units <= 0) { result.textContent = 'Enter an NSE ticker and a whole number of units.'; return; }
-      const symbol = raw.endsWith('.NS') ? raw : `${raw}.NS`;
-      result.textContent = `Calculating ${symbol} scenario…`;
-      try {
-        const data = await chart(symbol), meta = data.chart.result[0].meta, stock = analyse(symbol, meta.longName || raw, data);
-        const projection = months => (Math.pow(1 + stock.base / 100, months / 12) - 1) * 100;
-        const investment = stock.price * units;
-        const row = months => { const change = projection(months), value = investment * (1 + change / 100), gain = value - investment; return `<tr><td>${months} month${months > 1 ? 's' : ''}</td><td>${pct(change)}</td><td>${fmt.format(value)}</td><td class="${gain >= 0 ? 'positive' : 'negative'}">${gain >= 0 ? '+' : '−'}${fmt.format(Math.abs(gain))}</td></tr>`; };
-        result.innerHTML = `<strong>${stock.name} · ${units.toLocaleString('en-IN')} units</strong><br>Current price per unit: <strong>${fmt.format(stock.price)}</strong><br>Total investment today: <strong>${fmt.format(investment)}</strong><table class="projection-table"><thead><tr><th>Period</th><th>Base scenario</th><th>Estimated value</th><th>Gain / loss</th></tr></thead><tbody>${row(1)}${row(3)}${row(6)}${row(12)}</tbody></table><small>Historical-model base scenarios only; actual returns can be materially different.</small>`;
-      } catch { result.textContent = `Could not retrieve ${symbol}. Check the NSE ticker and try again.`; }
-    });
-  </script>
-  <script>
-    document.addEventListener('submit', event => {
-      if (event.target.id !== 'modal-return-form') return;
-      event.preventDefault();
-      const units = Number(document.querySelector('#modal-units').value);
-      const output = document.querySelector('#modal-return-result');
-      if (!active || !Number.isFinite(units) || units <= 0) { output.textContent = 'Enter a valid number of units.'; return; }
-      const investment = active.price * units;
-      const row = months => { const percent = (Math.pow(1 + active.base / 100, months / 12) - 1) * 100, gain = investment * percent / 100; return `${months}m: ${pct(percent)} · ${gain >= 0 ? '+' : '−'}${fmt.format(Math.abs(gain))}`; };
-      output.innerHTML = `<strong>Total investment: ${fmt.format(investment)}</strong><br>${row(1)}<br>${row(3)}<br>${row(6)}<br>${row(12)}<br><small>Historical-model scenarios, not guaranteed returns.</small>`;
-    });
-  </script>
-  <script>
-    document.addEventListener('click', event => {
-      if (!event.target.closest('[data-open]')) return;
-      setTimeout(() => {
-        const box = document.querySelector('.score-explanation');
-        if (!box || box.querySelector('.beginner-guide')) return;
-        const guide = document.createElement('div');
-        guide.className = 'beginner-guide';
-        guide.innerHTML = '<strong>Simple guide:</strong> Think of the score like a traffic light. It starts at 50. <b>Trend:</b> prices above their 20- and 50-day averages add points because the recent direction is stronger. <b>Momentum:</b> RSI checks whether buying is balanced (very high RSI can mean the price is overheated); MACD checks whether upward or downward momentum is building. <b>Risk:</b> a large fall from the yearly high or unusually high volatility removes points. A higher score means more technical factors are positive today—it does not guarantee a profit.';
-        box.appendChild(guide);
-      }, 0);
-    });
-  </script>
-  <script>
-    new MutationObserver(() => {
-      const scoreBox = document.querySelector('.score-explanation');
-      const newsHeading = document.querySelector('.news h3');
-      if (newsHeading && active) newsHeading.textContent = `${active.symbol} company news`;
-      if (!scoreBox || !active || scoreBox.querySelector('.ticker-specific')) return;
-      const explanation = document.createElement('div');
-      explanation.className = 'ticker-specific';
-      explanation.innerHTML = `<strong>Why ${active.symbol} has this signal today</strong><ul>${active.reasons.map(reason => `<li>${reason}</li>`).join('')}</ul><p><b>Plain English:</b> this ${active.signal} label reflects today’s price trend and risk conditions for ${active.symbol}. It is not a prediction that the share will definitely rise or fall.</p>`;
-      scoreBox.appendChild(explanation);
-    }).observe(document.querySelector('#detail-card'), { childList: true, subtree: true });
-  </script>
-  <script>
-    (() => {
-      const history = document.querySelector('#chat-history');
-      const add = (text, kind) => { const message = document.createElement('div'); message.className = `chat-message ${kind}`; message.textContent = text; history.appendChild(message); history.scrollTop = history.scrollHeight; };
-      const reply = question => {
-        const q = question.toLowerCase();
-        if (!active) return 'Choose Review for a stock first. I can then explain its live technical setup, risk levels, and modelled scenario.';
-        const r = active;
-        if (q.includes('support') || q.includes('resistance')) return `${r.symbol}: recent 20-day support is ${fmt.format(r.support)} and resistance is ${fmt.format(r.resistance)}. Support is the lowest recent close; resistance is the highest recent close, so both can change daily.`;
-        if (q.includes('rsi')) return `${r.symbol} RSI is ${r.rsi.toFixed(0)}. RSI measures recent buying versus selling pressure: roughly 45–68 is balanced in this model; above 75 can indicate an overheated price.`;
-        if (q.includes('macd') || q.includes('momentum')) return `${r.symbol} MACD is currently ${r.macd >= 0 ? 'positive' : 'negative'}, which the model treats as ${r.macd >= 0 ? 'supportive' : 'weaker'} price momentum.`;
-        if (q.includes('price') || q.includes('current')) return `${r.symbol} last close was ${fmt.format(r.price)}, with a daily move of ${pct(r.change)}.`;
-        if (q.includes('return') || q.includes('forecast') || q.includes('scenario') || q.includes('month')) return `${r.symbol}'s 12-month base scenario is ${pct(r.base)}, with a wider historical range of ${pct(r.bear)} to ${pct(r.bull)}. Use the Return calculator in the Review popup for unit-based 1, 3, 6 and 12-month scenarios.`;
-        if (q.includes('score') || q.includes('signal') || q.includes('buy') || q.includes('hold') || q.includes('reduce') || q.includes('why')) return `${r.symbol} is currently ${r.signal} with a ${r.score}/100 score. The main live drivers are: ${r.reasons.join(' ')}`;
-        if (q.includes('news')) return `The ${r.symbol} Review popup shows the latest ticker-specific headlines. Treat headlines as context and verify material claims with company filings.`;
-        if (q.includes('risk') || q.includes('volatility')) return `${r.symbol} annualized historical volatility is ${r.vol.toFixed(1)}%. Higher volatility can mean larger price swings, so it lowers the model score and calls for more cautious position sizing.`;
-        return `For ${r.symbol}, ask me about its signal score, price, RSI, MACD, support/resistance, risk, news, or 12-month scenario. This is research support, not personalised investment advice.`;
-      };
-      document.querySelector('#research-chat-form').addEventListener('submit', event => { event.preventDefault(); const input = document.querySelector('#research-question'), question = input.value.trim(); if (!question) return; add(question, 'user'); add(reply(question), 'assistant'); input.value = ''; });
-    })();
-  </script>
 </body>
 </html>
