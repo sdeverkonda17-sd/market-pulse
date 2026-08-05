@@ -76,6 +76,17 @@ function withinRateLimit(request) {
   return entry.count <= RATE_LIMIT;
 }
 
+function cookieValue(request, name) {
+  const cookies = String(request.headers.cookie || '').split(';');
+  const prefix = `${name}=`;
+  const item = cookies.map(value => value.trim()).find(value => value.startsWith(prefix));
+  return item ? decodeURIComponent(item.slice(prefix.length)) : '';
+}
+
+function sharekhanStateCookie(state, maxAge) {
+  return `mp_sharekhan_state=${encodeURIComponent(state || '')}; Path=/sharekhan/; Max-Age=${maxAge}; HttpOnly; Secure; SameSite=Lax`;
+}
+
 function readSession() {
   if (sessionCache) return sessionCache;
   try {
@@ -323,6 +334,7 @@ const server = http.createServer(async (request, response) => {
     if (!configured()) { sendPage(response, 503, 'Sharekhan setup required', 'The server owner must add the Sharekhan API Key and Secure Key to its private server configuration first.'); return; }
     const state = crypto.randomBytes(24).toString('hex');
     pendingStates.set(state, Date.now());
+    response.setHeader('Set-Cookie', sharekhanStateCookie(state, 600));
     const login = new URL(SHAREKHAN_LOGIN);
     login.searchParams.set('api_key', process.env.SHAREKHAN_API_KEY);
     login.searchParams.set('state', state);
@@ -332,10 +344,25 @@ const server = http.createServer(async (request, response) => {
     return;
   }
   if (url.pathname === '/sharekhan/callback') {
-    const state = url.searchParams.get('state') || '';
-    const requestToken = url.searchParams.get('request_token') || url.searchParams.get('requestToken') || url.searchParams.get('token');
-    const valid = pendingStates.has(state) && Date.now() - pendingStates.get(state) < 10 * 60 * 1000;
+    const returnedState = url.searchParams.get('state') || '';
+    const cookieState = cookieValue(request, 'mp_sharekhan_state');
+    const requestTokenKey = ['request_token', 'requestToken', 'requesttoken', 'request-token', 'token']
+      .find(key => url.searchParams.has(key));
+    const requestToken = requestTokenKey ? url.searchParams.get(requestTokenKey) : '';
+    const state = returnedState || cookieState;
+    const pendingAt = state ? pendingStates.get(state) : null;
+    const withinLoginWindow = Number.isFinite(pendingAt) && Date.now() - pendingAt < 10 * 60 * 1000;
+    const statesAgree = !returnedState || !cookieState || returnedState === cookieState;
+    const valid = Boolean(state && withinLoginWindow && statesAgree);
     pendingStates.delete(state);
+    response.setHeader('Set-Cookie', sharekhanStateCookie('', 0));
+    if (!valid || !requestToken) {
+      // Log only diagnostic metadata. A request token is never written to logs.
+      console.warn('Sharekhan callback missing or invalid login data:', {
+        hasReturnedState: Boolean(returnedState), hasStateCookie: Boolean(cookieState), statesAgree,
+        requestTokenParameter: requestTokenKey || null, parameterNames: [...url.searchParams.keys()]
+      });
+    }
     if (!valid || !requestToken) { sendPage(response, 400, 'Sharekhan connection not completed', 'The login return did not include a valid connection state or request token. Start again from the secure Sharekhan connect link.'); return; }
     try {
       await exchangeForAccessToken(requestToken, state);

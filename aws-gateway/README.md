@@ -15,7 +15,7 @@ the Sharekhan result is clearly labelled as daily historical data.
 
 ## Put this release in your GitHub repository first
 
-1. Extract `market-pulse-dashboard-sharekhan-gateway-v30.zip` on Windows.
+1. Extract `market-pulse-dashboard-sharekhan-gateway-v31.zip` on Windows.
 2. In the `sdeverkonda17-sd/market-pulse` GitHub repository, choose **Add
    file → Upload files**.
 3. Drag all extracted files and folders into GitHub, including the new
