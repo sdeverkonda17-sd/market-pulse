@@ -1,0 +1,22 @@
+[Unit]
+Description=Market Pulse secure market-data gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=marketpulse
+Group=marketpulse
+WorkingDirectory=/opt/market-pulse
+EnvironmentFile=/etc/market-pulse/market-pulse.env
+ExecStart=/usr/bin/node /opt/market-pulse/aws-gateway/server.js
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/market-pulse
+
+[Install]
+WantedBy=multi-user.target

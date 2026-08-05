@@ -28,7 +28,9 @@ function writeCache(key, value) {
 }
 
 async function api(type, symbol = '') {
-  const url = `/api/market?type=${encodeURIComponent(type)}${symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''}`;
+  const endpoint = window.MARKET_PULSE_API_URL || '/api/market';
+  const separator = endpoint.includes('?') ? '&' : '?';
+  const url = `${endpoint}${separator}type=${encodeURIComponent(type)}${symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''}`;
   const response = await fetch(url, { cache: 'no-store' });
   let payload = null;
   try { payload = await response.json(); } catch { /* A non-JSON provider response is handled below. */ }
