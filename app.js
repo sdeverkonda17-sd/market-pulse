@@ -6,7 +6,7 @@ const STOCK_CACHE_PREFIX = 'market-pulse-nse-stock-v28:';
 const WATCHLIST_KEY = 'market-pulse-watchlist-v1';
 const WATCH_ALERTS_KEY = 'market-pulse-watch-alerts-v1';
 const MAX_WATCHLIST_SIZE = 8;
-const state = { leaders: [], selected: null, universeCount: 0, watchlist: [], watchRows: [], sector: 'banking', sectorLoaded: false };
+const state = { leaders: [], selected: null, universeCount: 0, watchlist: [], watchRows: [], sector: 'banking', sectorLoaded: false, sectorData: null, leaderPage: 0, sectorPage: 0, watchPage: 0 };
 const SECTOR_LABELS = { banking: 'Banking', defence: 'Defence', it: 'IT', energy: 'Energy', auto: 'Auto', pharma: 'Pharma', fmcg: 'FMCG', metals: 'Metals', infrastructure: 'Infrastructure' };
 
 function safe(text) {
@@ -60,18 +60,46 @@ function scoreStock(stock) {
   };
 }
 
+function compactWorkspace() {
+  return window.matchMedia('(max-width: 860px)').matches;
+}
+
+function visiblePage(items, page) {
+  const size = window.matchMedia('(max-width: 500px)').matches ? 1 : compactWorkspace() ? 2 : 5;
+  const pages = Math.max(1, Math.ceil(items.length / size));
+  const active = Math.max(0, Math.min(page, pages - 1));
+  return { items: items.slice(active * size, active * size + size), page: active, pages, size };
+}
+
+function pager(target, page, pages, kind) {
+  const node = $(target);
+  if (!node) return;
+  node.innerHTML = pages > 1 ? `<button class="pager-button" data-page-kind="${kind}" data-page="${page - 1}" type="button" ${page === 0 ? 'disabled' : ''}>Previous</button><span>Page ${page + 1} of ${pages}</span><button class="pager-button" data-page-kind="${kind}" data-page="${page + 1}" type="button" ${page === pages - 1 ? 'disabled' : ''}>Next</button>` : '';
+}
+
+function stockCard(stock, index, sector = false) {
+  const levels = sector && stock.support ? `<div><span>Levels</span><strong>${money.format(stock.support)} / ${money.format(stock.resistance)}</strong><small>support / resistance</small></div>` : `<div><span>Risk</span><strong>${safe(stock.risk)}</strong><small>daily range ${stock.rangePct.toFixed(2)}%</small></div>`;
+  const trend = sector ? `<div><span>3-month trend</span><strong class="${stock.trend3m >= 0 ? 'positive' : 'negative'}">${percent(stock.trend3m)}</strong><small>12M scenario ${percent(stock.scenario12m || 0)}</small></div>` : `<div><span>Signal score</span><strong>${stock.score}/100</strong><small>${safe(stock.signal)} momentum setup</small></div>`;
+  return `<article class="stock-card"><div class="stock-card-heading"><div><span class="stock-rank">#${index + 1}</span><strong>${safe(stock.symbol)}</strong><small>${safe(stock.name)}</small></div><span class="signal ${stock.signal}">${stock.signal}</span></div><div class="stock-card-metrics"><div><span>Last price</span><strong>${money.format(stock.lastPrice)}</strong><small class="${stock.pChange >= 0 ? 'positive' : 'negative'}">${percent(stock.pChange)} today</small></div>${trend}${levels}</div><div class="stock-card-actions"><button class="review-button" data-review="${safe(stock.symbol)}" type="button">Review</button><button class="decision-button" data-decision="${safe(stock.symbol)}" type="button">Decision brief</button>${sector ? '' : `<button class="watch-button" data-watch="${safe(stock.symbol)}" type="button">Watch</button>`}</div></article>`;
+}
+
 function renderLeaders() {
   const leaders = state.leaders;
-  $('#stock-table').innerHTML = leaders.map((stock, index) => `
+  const view = visiblePage(leaders, state.leaderPage);
+  state.leaderPage = view.page;
+  $('#stock-table').innerHTML = view.items.map((stock, index) => `
     <tr>
-      <td>${index + 1}</td>
+      <td>${view.page * view.size + index + 1}</td>
       <td class="company">${safe(stock.symbol)}<small>${safe(stock.name)}</small></td>
       <td>${money.format(stock.lastPrice)}</td>
       <td class="${stock.pChange >= 0 ? 'positive' : 'negative'}">${percent(stock.pChange)}</td>
       <td><span class="signal ${stock.signal}">${stock.signal}</span></td>
       <td><span class="risk-badge">${stock.risk}</span></td>
       <td class="stock-actions"><button class="review-button" data-review="${safe(stock.symbol)}" type="button">Review</button><button class="decision-button" data-decision="${safe(stock.symbol)}" type="button">Decision</button><button class="watch-button" data-watch="${safe(stock.symbol)}" type="button">Watch</button></td>
-    </tr>`).join('');
+    </tr>`).join('') || '<tr><td colspan="7" class="connection-note">No market prices are available right now.</td></tr>';
+  const cards = $('#stock-cards');
+  if (cards) cards.innerHTML = view.items.map((stock, index) => stockCard(stock, view.page * view.size + index)).join('');
+  pager('#stock-pager', view.page, view.pages, 'leaders');
   $('#universe-count').textContent = state.universeCount || '-';
   $('#buy-count').textContent = leaders.filter(stock => stock.signal === 'BUY').length;
   $('#top-mover').textContent = leaders[0] ? `${leaders[0].symbol} ${percent(leaders[0].pChange)}` : '-';
@@ -79,11 +107,14 @@ function renderLeaders() {
 
 function renderSectorLeaders(data) {
   const leaders = (data.leaders || []).map(scoreStock).filter(stock => stock.lastPrice > 0);
+  state.sectorData = { ...data, leaders };
+  const view = visiblePage(leaders, state.sectorPage);
+  state.sectorPage = view.page;
   const table = $('#sector-table');
   if (!table) return;
-  table.innerHTML = leaders.map((stock, index) => `
+  table.innerHTML = view.items.map((stock, index) => `
     <tr>
-      <td>${index + 1}</td>
+      <td>${view.page * view.size + index + 1}</td>
       <td class="company">${safe(stock.symbol)}<small>${safe(stock.name)}</small></td>
       <td>${money.format(stock.lastPrice)}</td>
       <td class="${stock.pChange >= 0 ? 'positive' : 'negative'}">${percent(stock.pChange)}</td>
@@ -93,6 +124,9 @@ function renderSectorLeaders(data) {
       <td><strong>${money.format(stock.support)}</strong><small class="table-subtext">S ${money.format(stock.support)} · R ${money.format(stock.resistance)}</small></td>
       <td class="stock-actions"><button class="review-button" data-review="${safe(stock.symbol)}" type="button">Review</button><button class="decision-button" data-decision="${safe(stock.symbol)}" type="button">Decision</button></td>
     </tr>`).join('') || '<tr><td colspan="9" class="connection-note">No sector prices are available right now. Try again shortly.</td></tr>';
+  const cards = $('#sector-cards');
+  if (cards) cards.innerHTML = view.items.map((stock, index) => stockCard(stock, view.page * view.size + index, true)).join('');
+  pager('#sector-pager', view.page, view.pages, 'sector');
   const label = SECTOR_LABELS[data.sector] || 'Sector';
   const note = $('#sector-note');
   if (note) note.textContent = `${label} basket · ${data.universeCount || leaders.length} symbols · ${data.source || 'market data'}`;
@@ -104,6 +138,7 @@ async function loadSector(sector = state.sector) {
   const normalized = String(sector || '').toLowerCase();
   if (!SECTOR_LABELS[normalized]) return;
   state.sector = normalized;
+  state.sectorPage = 0;
   const note = $('#sector-note');
   const table = $('#sector-table');
   document.querySelectorAll('[data-sector]').forEach(button => button.classList.toggle('is-active', button.dataset.sector === normalized));
@@ -146,7 +181,7 @@ function renderUpdates(data) {
   note.textContent = data.source || 'Market updates';
   const updates = Array.isArray(data.announcements) ? data.announcements : [];
   list.innerHTML = updates.length
-    ? updates.map(item => `<a class="update-row" href="${safeUrl(item.url)}" target="_blank" rel="noopener"><strong>${safe(item.symbol)}</strong><span>${safe(item.title)}</span><small>${safe(item.date || 'NSE disclosure')}</small></a>`).join('')
+    ? updates.slice(0, 3).map(item => `<a class="update-row" href="${safeUrl(item.url)}" target="_blank" rel="noopener"><strong>${safe(item.symbol)}</strong><span>${safe(item.title)}</span><small>${safe(item.date || 'NSE disclosure')}</small></a>`).join('')
     : `<p class="updates-empty">${safe(data.detail || 'No recent exchange announcements were returned. Try again shortly.')}</p>`;
 }
 
@@ -172,6 +207,7 @@ async function refresh() {
     if (!leaders.length) throw new Error('The market-data source returned no usable prices');
     state.universeCount = data.universeCount || leaders.length;
     state.leaders = leaders;
+    state.leaderPage = 0;
     const sourceLabel = $('#data-source');
     if (sourceLabel) sourceLabel.textContent = data.source || 'NSE';
     writeCache(LEADERS_CACHE_KEY, { leaders: data.leaders, universeCount: state.universeCount, savedAt: data.savedAt || data.asOf || new Date().toISOString(), source: data.source, fallback: Boolean(data.fallback) });
@@ -267,6 +303,66 @@ function decisionContent(metrics) {
   return `<div class="modal-body"><div class="modal-title"><div><h2>${safe(metrics.name)}</h2><p>${safe(metrics.symbol)} · ${source} · ${money.format(metrics.lastPrice)}</p></div><span class="signal ${metrics.signal}">${metrics.signal}</span></div><section class="decision-hero"><span>TRADE DECISION</span><h3>${headline}</h3><p>${action}</p></section><div class="summary-cards"><article><span>Signal score</span><strong>${metrics.score}/100</strong></article><article><span>Today</span><strong class="${metrics.pChange >= 0 ? 'positive' : 'negative'}">${percent(metrics.pChange)}</strong></article><article><span>20-day trend</span><strong class="${metrics.trend >= 0 ? 'positive' : 'negative'}">${percent(metrics.trend)}</strong></article><article><span>Risk</span><strong>${metrics.risk}</strong></article></div><div class="review-grid"><section class="detail-section"><h3>Why someone may consider buying</h3><ul>${supports.map(reason => `<li>${safe(reason)}</li>`).join('')}</ul><h3 class="decision-subhead">Why someone may wait or avoid buying</h3><ul>${cautions.map(reason => `<li>${safe(reason)}</li>`).join('')}</ul></section><section class="detail-section"><h3>Price plan</h3><div class="levels"><div><span>Current price</span><strong>${money.format(metrics.lastPrice)}</strong></div><div><span>Support / risk line</span><strong>${money.format(metrics.support)}</strong></div><div><span>Resistance / confirmation</span><strong>${money.format(metrics.resistance)}</strong></div><div><span>52-week high</span><strong>${money.format(metrics.yearHigh || 0)}</strong></div></div><p>Use position sizing, your own stop-loss plan, company results, valuation and market conditions. This is research, not investment advice.</p></section></div><section class="detail-section"><h3>Price trend and pointer</h3>${chart(metrics)}</section><section class="detail-section announcements"><h3>${safe(metrics.symbol)} company disclosures</h3><div id="announcements">Loading company disclosures...</div></section></div>`;
 }
 
+function decisionEvidence(metrics) {
+  const supportGap = metrics.support ? (metrics.lastPrice - metrics.support) / metrics.lastPrice * 100 : 0;
+  const resistanceGap = metrics.resistance ? (metrics.resistance - metrics.lastPrice) / metrics.lastPrice * 100 : 0;
+  const highPosition = metrics.yearHigh ? metrics.lastPrice / metrics.yearHigh * 100 : 0;
+  const positive = [];
+  const risks = [];
+  if (metrics.pChange > 0) positive.push(`Today’s price is ${percent(metrics.pChange)}, so intraday momentum is positive.`);
+  else risks.push(`Today’s price is ${percent(metrics.pChange)}, so the latest session is not confirming momentum.`);
+  if (metrics.trend > 0) positive.push(`The 20-day trend is ${percent(metrics.trend)}, which supports the current price direction.`);
+  else risks.push(`The 20-day trend is ${percent(metrics.trend)}; the recent direction needs to improve before a fresh entry is stronger.`);
+  if (metrics.rangePct <= 2.5) positive.push(`The day’s ${metrics.rangePct.toFixed(2)}% range is controlled relative to the dashboard’s risk threshold.`);
+  else risks.push(`The ${metrics.rangePct.toFixed(2)}% intraday range is elevated, so timing and position-size risk are higher.`);
+  if (highPosition >= 94) risks.push(`Price is ${highPosition.toFixed(1)}% of its 52-week high. Breakout strength is possible, but so is pullback risk.`);
+  else if (highPosition) positive.push(`Price is ${highPosition.toFixed(1)}% of its 52-week high, leaving ${Math.max(0, 100 - highPosition).toFixed(1)}% below that reference point.`);
+  return { supportGap, resistanceGap, highPosition, positive, risks };
+}
+
+function modalTabs(prefix, items) {
+  return `<div class="modal-tabs" role="tablist">${items.map((item, index) => `<button class="modal-tab${index === 0 ? ' is-active' : ''}" data-modal-tab="${prefix}-${item.id}" type="button" role="tab" aria-selected="${index === 0}">${item.label}</button>`).join('')}</div>`;
+}
+
+function modalPanel(prefix, id, content, active = false) {
+  return `<section class="modal-panel${active ? ' is-active' : ''}" data-modal-panel="${prefix}-${id}" ${active ? '' : 'hidden'}>${content}</section>`;
+}
+
+function bindModalTabs() {
+  document.querySelectorAll('[data-modal-tab]').forEach(button => {
+    button.addEventListener('click', () => {
+      const target = button.dataset.modalTab;
+      document.querySelectorAll('[data-modal-tab]').forEach(tab => {
+        const active = tab.dataset.modalTab === target;
+        tab.classList.toggle('is-active', active);
+        tab.setAttribute('aria-selected', String(active));
+      });
+      document.querySelectorAll('[data-modal-panel]').forEach(panel => {
+        const active = panel.dataset.modalPanel === target;
+        panel.classList.toggle('is-active', active);
+        panel.hidden = !active;
+      });
+    });
+  });
+}
+
+function reviewContent(metrics) {
+  const source = safe(metrics.dataSource || 'market data');
+  const evidence = decisionEvidence(metrics);
+  const prefix = 'review';
+  const scoreText = metrics.score >= 70 ? 'Positive price-action factors outweigh the risk deductions in this momentum screen.' : metrics.score >= 45 ? 'The evidence is mixed: this is a watch / hold screen rather than a clear momentum entry.' : 'Risk deductions outweigh the positive price-action factors in this momentum screen.';
+  return `<div class="modal-body modal-body-fixed"><div class="modal-title"><div><h2>${safe(metrics.name)}</h2><p>${safe(metrics.symbol)} · ${source} · last price ${money.format(metrics.lastPrice)}</p></div><span class="signal ${metrics.signal}">${metrics.signal}</span></div><div class="summary-cards"><article><span>Signal score</span><strong>${metrics.score}/100</strong></article><article><span>Today</span><strong class="${metrics.pChange >= 0 ? 'positive' : 'negative'}">${percent(metrics.pChange)}</strong></article><article><span>20-day trend</span><strong class="${metrics.trend >= 0 ? 'positive' : 'negative'}">${percent(metrics.trend)}</strong></article><article><span>Risk</span><strong>${metrics.risk}</strong></article></div>${modalTabs(prefix, [{ id: 'evidence', label: 'Signal explained' }, { id: 'plan', label: 'Levels & scenarios' }, { id: 'chart', label: 'Price chart' }, { id: 'news', label: 'Company updates' }])}${modalPanel(prefix, 'evidence', `<section class="detail-section research-brief"><p class="research-label">WHAT THE SCORE MEANS</p><h3>${scoreText}</h3><p>Score formula: price change, daily range and distance from the 52-week high. It is a price-action screen, not a valuation or earnings forecast.</p><div class="evidence-columns"><div><h4>Constructive evidence</h4><ul>${evidence.positive.map(item => `<li>${safe(item)}</li>`).join('') || '<li>No positive price-action factor is currently strong enough to add.</li>'}</ul></div><div><h4>Risk or wait signals</h4><ul>${evidence.risks.map(item => `<li>${safe(item)}</li>`).join('') || '<li>No specific price-action warning was triggered; company and market risks still remain.</li>'}</ul></div></div></section>`, true)}${modalPanel(prefix, 'plan', `<div class="review-grid"><section class="detail-section"><p class="research-label">REFERENCE LEVELS</p><h3>Plan the trade before acting</h3><div class="levels"><div><span>Current price</span><strong>${money.format(metrics.lastPrice)}</strong></div><div><span>Support / risk line</span><strong>${money.format(metrics.support)}</strong><small>${evidence.supportGap.toFixed(1)}% below price</small></div><div><span>Resistance / confirmation</span><strong>${money.format(metrics.resistance)}</strong><small>${evidence.resistanceGap.toFixed(1)}% above price</small></div><div><span>52-week high</span><strong>${money.format(metrics.yearHigh || 0)}</strong></div></div><p>These are recent-price reference levels, not guaranteed entry, stop-loss, or target prices.</p></section><section class="detail-section"><p class="research-label">YOUR SCENARIO</p><h3>Estimate possible outcomes</h3><p>Uses recent trend and volatility. Excludes tax, brokerage and slippage.</p><div class="calculator"><label>Units<input id="units-input" type="number" value="1" min="1" step="1"></label><button class="primary-button" id="calculate-return" type="button">Calculate</button></div><div class="calc-result" id="calc-result">Enter units for six- and twelve-month base, bull and bear scenarios.</div></section></div>`)}${modalPanel(prefix, 'chart', `<section class="detail-section chart-section"><p class="research-label">TREND CONTEXT</p><h3>Recent closing-price history</h3><p>Move over or touch the line to inspect the date and close.</p>${chart(metrics)}</section>`)}${modalPanel(prefix, 'news', `<section class="detail-section announcements"><p class="research-label">COMPANY-SPECIFIC DISCLOSURES</p><h3>${safe(metrics.symbol)} announcements</h3><div id="announcements">Loading company disclosures…</div></section>`)}</div>`;
+}
+
+function decisionContent(metrics) {
+  const source = safe(metrics.dataSource || 'market data');
+  const evidence = decisionEvidence(metrics);
+  const prefix = 'decision';
+  const posture = metrics.signal === 'BUY' ? 'Momentum is constructive, but only a planned, risk-defined setup is shown.' : metrics.signal === 'HOLD' ? 'The ticker has mixed evidence. Wait for confirmation instead of treating the signal as a fresh buy.' : 'Current price action does not support adding risk. Revisit only if the evidence changes.';
+  const nextStep = metrics.signal === 'BUY' ? `A buyer would still need a position size and an exit plan below ${money.format(metrics.support)}.` : metrics.signal === 'HOLD' ? `A patient investor can monitor ${money.format(metrics.resistance)} for confirmation or ${money.format(metrics.support)} as the risk line.` : `A cautious investor can wait for a positive daily move and improving 20-day trend before reviewing again.`;
+  return `<div class="modal-body modal-body-fixed"><div class="modal-title"><div><h2>${safe(metrics.name)}</h2><p>${safe(metrics.symbol)} · ${source} · ${money.format(metrics.lastPrice)}</p></div><span class="signal ${metrics.signal}">${metrics.signal}</span></div><section class="decision-hero"><span>DECISION BRIEF</span><h3>${posture}</h3><p>${nextStep}</p></section><div class="summary-cards"><article><span>Signal score</span><strong>${metrics.score}/100</strong></article><article><span>Today</span><strong class="${metrics.pChange >= 0 ? 'positive' : 'negative'}">${percent(metrics.pChange)}</strong></article><article><span>Trend</span><strong class="${metrics.trend >= 0 ? 'positive' : 'negative'}">${percent(metrics.trend)}</strong></article><article><span>Risk</span><strong>${metrics.risk}</strong></article></div>${modalTabs(prefix, [{ id: 'evidence', label: 'Evidence' }, { id: 'plan', label: 'Decision map' }, { id: 'news', label: 'Company updates' }])}${modalPanel(prefix, 'evidence', `<section class="detail-section research-brief"><p class="research-label">WHY THE DASHBOARD REACHED THIS VIEW</p><div class="evidence-columns"><div><h4>Evidence for strength</h4><ul>${evidence.positive.map(item => `<li>${safe(item)}</li>`).join('') || '<li>No positive price-action support is strong enough to rely on.</li>'}</ul></div><div><h4>Evidence for caution</h4><ul>${evidence.risks.map(item => `<li>${safe(item)}</li>`).join('') || '<li>There is no highlighted technical warning, but price-only analysis has clear limits.</li>'}</ul></div></div><p class="method-note">This brief evaluates price action only. Review earnings, valuation, cash flow, sector conditions and disclosures separately before investing.</p></section>`, true)}${modalPanel(prefix, 'plan', `<section class="detail-section"><p class="research-label">DECISION MAP</p><h3>What would change the view?</h3><div class="decision-map"><div><span>Price now</span><strong>${money.format(metrics.lastPrice)}</strong><small>Current reference</small></div><div><span>Risk increases below</span><strong>${money.format(metrics.support)}</strong><small>${evidence.supportGap.toFixed(1)}% below now</small></div><div><span>Confirmation near</span><strong>${money.format(metrics.resistance)}</strong><small>${evidence.resistanceGap.toFixed(1)}% above now</small></div></div><p>Decision rule: do not rely on a single score. A stronger case needs trend, price behaviour, company fundamentals and a risk limit to agree.</p></section>`)}${modalPanel(prefix, 'news', `<section class="detail-section announcements"><p class="research-label">COMPANY-SPECIFIC DISCLOSURES</p><h3>${safe(metrics.symbol)} announcements</h3><div id="announcements">Loading company disclosures…</div></section>`)}</div>`;
+}
+
 function setCalculator(metrics) {
   const button = $('#calculate-return');
   if (!button) return;
@@ -334,6 +430,7 @@ function fillReview(raw, symbol, usingSavedData = false, mode = 'review') {
   state.selected = metrics;
   $('#modal-kicker').textContent = `${metrics.symbol} - ${usingSavedData ? 'SAVED ' : ''}${mode === 'decision' ? 'TRADE DECISION' : `${metrics.dataSource || 'MARKET DATA'} STOCK REVIEW`}`;
   $('#modal-content').innerHTML = mode === 'decision' ? decisionContent(metrics) : reviewContent(metrics);
+  bindModalTabs();
   if (mode === 'review') setCalculator(metrics);
   bindChart(metrics);
   const panel = $('#announcements');
@@ -468,16 +565,20 @@ function renderWatchlist(rows = state.watchRows) {
   if (!state.watchlist.length) {
     list.innerHTML = '<p class="watchlist-empty">No stocks watched yet. Add an NSE ticker, a target price, or a stop level.</p>';
     note.textContent = `Saved only on this device · maximum ${MAX_WATCHLIST_SIZE} stocks`;
+    pager('#watch-pager', 0, 0, 'watch');
     return;
   }
   const indexed = new Map(rows.map(row => [row.symbol, row]));
-  list.innerHTML = state.watchlist.map(item => {
+  const view = visiblePage(state.watchlist, state.watchPage);
+  state.watchPage = view.page;
+  list.innerHTML = view.items.map(item => {
     const row = indexed.get(item.symbol) || { ...item, metrics: cachedStockAnalysis(item.symbol) };
     const metrics = row.metrics;
     const alert = alertForWatch(item, metrics);
     const levels = `${item.target ? `Target ${money.format(item.target)}` : 'No target'} · ${item.stop ? `Stop ${money.format(item.stop)}` : 'No stop'}`;
     return `<article class="watch-row ${alert ? 'watch-alert-row' : ''}"><div><strong>${safe(item.symbol)}</strong><small>${metrics ? `${safe(metrics.name)} · ${safe(metrics.dataSource || 'market data')}` : 'Loading market data…'}</small></div><div><span>Last price</span><strong>${metrics ? money.format(metrics.lastPrice) : '—'}</strong><small class="${metrics?.pChange >= 0 ? 'positive' : 'negative'}">${metrics ? percent(metrics.pChange) : '—'}</small></div><div><span>Signal / risk</span><strong>${metrics ? `${safe(metrics.signal)} · ${safe(metrics.risk)}` : '—'}</strong><small>${levels}</small></div><div class="watch-actions"><button class="review-button" data-review="${safe(item.symbol)}" type="button">Review</button><button class="decision-button" data-decision="${safe(item.symbol)}" type="button">Decision</button><button class="watch-edit" data-edit-watch="${safe(item.symbol)}" type="button">Edit</button><button class="watch-remove" data-remove-watch="${safe(item.symbol)}" type="button">Remove</button></div></article>`;
   }).join('');
+  pager('#watch-pager', view.page, view.pages, 'watch');
   note.textContent = 'Alerts are checked while this dashboard is open or refreshed.';
 }
 
@@ -587,13 +688,36 @@ function setupWorkspace() {
   const updates = createPanel('updates', 'Updates');
   const watchlist = createPanel('watchlist', 'Watchlist');
   ['.disclaimer', '.metric-grid', '.screening'].forEach(selector => { const node = main.querySelector(selector); if (node) market.append(node); });
+  const marketTable = market.querySelector('.table-wrap');
+  if (marketTable) marketTable.insertAdjacentHTML('afterend', '<div id="stock-cards" class="stock-card-list" aria-live="polite"></div><div id="stock-pager" class="data-pager" aria-label="Top 10 pages"></div>');
   ['.lookup-card', '.investment-card'].forEach(selector => { const node = main.querySelector(selector); if (node) research.append(node); });
+  const lookupPane = research.querySelector('.lookup-card');
+  const calculatorPane = research.querySelector('.investment-card');
+  if (lookupPane && calculatorPane) {
+    lookupPane.classList.add('research-pane', 'is-active');
+    calculatorPane.classList.add('research-pane');
+    calculatorPane.hidden = true;
+    const researchTabs = document.createElement('div');
+    researchTabs.className = 'research-tabs';
+    researchTabs.innerHTML = '<button class="research-tab is-active" data-research-pane="lookup" type="button">Ticker analysis</button><button class="research-tab" data-research-pane="calculator" type="button">Return calculator</button>';
+    research.prepend(researchTabs);
+    researchTabs.addEventListener('click', event => {
+      const button = event.target.closest('[data-research-pane]');
+      if (!button) return;
+      const showCalculator = button.dataset.researchPane === 'calculator';
+      lookupPane.hidden = showCalculator;
+      calculatorPane.hidden = !showCalculator;
+      researchTabs.querySelectorAll('button').forEach(tab => tab.classList.toggle('is-active', tab === button));
+    });
+  }
   const sectorContent = document.createElement('div');
   sectorContent.className = 'sector-workspace';
   sectorContent.innerHTML = `<div class="section-title sector-heading"><div><p class="eyebrow">SECTOR MOMENTUM</p><h2>Top 10 stocks by sector</h2></div><span id="sector-note">Choose a sector to load the latest ranking.</span></div><div class="sector-tabs" role="tablist" aria-label="NSE sector ranking">${Object.entries(SECTOR_LABELS).map(([key, label], index) => `<button class="sector-tab${index === 0 ? ' is-active' : ''}" data-sector="${key}" type="button">${label}</button>`).join('')}</div><div class="sector-insight" id="sector-insight" aria-live="polite">Sector analysis uses daily NSE-symbol data. It is research, not a price target.</div><div class="table-wrap sector-table-wrap"><table><thead><tr><th>#</th><th>Company</th><th>Last price</th><th>Today</th><th>3M trend</th><th>Signal</th><th>12M scenario</th><th>Trade levels</th><th>Actions</th></tr></thead><tbody id="sector-table"></tbody></table></div>`;
   sectors.append(sectorContent);
+  const sectorTable = sectors.querySelector('.sector-table-wrap');
+  if (sectorTable) sectorTable.insertAdjacentHTML('afterend', '<div id="sector-cards" class="stock-card-list" aria-live="polite"></div><div id="sector-pager" class="data-pager" aria-label="Sector ranking pages"></div>');
   const updatesCard = main.querySelector('.updates-card'); if (updatesCard) updates.append(updatesCard);
-  const watchlistCard = main.querySelector('.watchlist-card'); if (watchlistCard) watchlist.append(watchlistCard);
+  const watchlistCard = main.querySelector('.watchlist-card'); if (watchlistCard) { watchlist.append(watchlistCard); watchlistCard.querySelector('#watchlist-items')?.insertAdjacentHTML('afterend', '<div id="watch-pager" class="data-pager" aria-label="Watchlist pages"></div>'); }
   hero.after(tabs, panels);
   tabs.addEventListener('click', event => {
     const button = event.target.closest('[data-tab]');
@@ -602,6 +726,14 @@ function setupWorkspace() {
 }
 
 document.addEventListener('click', event => {
+  const pageButton = event.target.closest('[data-page-kind]');
+  if (pageButton && !pageButton.disabled) {
+    const next = Math.max(0, Number(pageButton.dataset.page) || 0);
+    if (pageButton.dataset.pageKind === 'leaders') { state.leaderPage = next; renderLeaders(); }
+    if (pageButton.dataset.pageKind === 'sector' && state.sectorData) { state.sectorPage = next; renderSectorLeaders(state.sectorData); }
+    if (pageButton.dataset.pageKind === 'watch') { state.watchPage = next; renderWatchlist(); }
+    return;
+  }
   const sector = event.target.closest('[data-sector]');
   if (sector) return void loadSector(sector.dataset.sector);
   const review = event.target.closest('[data-review]');
@@ -621,6 +753,16 @@ document.addEventListener('click', event => {
     writeCache(WATCH_ALERTS_KEY, sent);
     void refreshWatchlist();
   }
+});
+
+let resizeTimer;
+window.addEventListener('resize', () => {
+  window.clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(() => {
+    if (state.leaders.length) renderLeaders();
+    if (state.sectorData) renderSectorLeaders(state.sectorData);
+    if (state.watchlist.length) renderWatchlist();
+  }, 120);
 });
 
 $('#refresh').addEventListener('click', refresh);

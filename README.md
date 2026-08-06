@@ -12,9 +12,20 @@ Market Pulse is an Indian-stock research dashboard. It must be deployed to Netli
 
 The screen and every stock-review popup name the source. Yahoo Finance fallback data is informational, may be delayed, and is not an official NSE feed. Verify a trade or corporate disclosure on NSE.
 
+## Recommended production data provider
+
+For a dependable daily ranking, do **not** treat the free Yahoo route as a live trading feed. The best next integration is a broker API that gives authenticated exchange snapshots and historical candles:
+
+1. **DhanHQ** is the simplest fit for this dashboard: its market-quote API can request LTP, OHLC or depth for up to 1,000 instruments at once, so one server-side call can screen the 50-stock universe. It requires a Dhan client ID and access token.
+2. **Upstox** is a strong alternative if you already use Upstox. Its market-quote API supports batches of exchange snapshots and its analytics token is designed for market-data and streaming use.
+3. **Zerodha Kite Connect** is a good option for a Kite customer. It supports batched full/OHLC/LTP quotes and historical candles, but requires its API access and login/token lifecycle.
+4. For an external/public product that needs official redistribution rights, use **NSE Data & Analytics** or an authorised vendor. That is the official route for licensed real-time, snapshot, historical and corporate data.
+
+Keep provider tokens in Netlify environment variables, never in GitHub, JavaScript files or a browser form. This release keeps the existing NSE-first route live until you choose one provider and supply its server-side credentials.
+
 ## Deploy on Windows
 
-1. Download `market-pulse-dashboard-watchlist-v28.zip` and right-click it in **Downloads**.
+1. Download `market-pulse-dashboard-research-ui-v33.zip` and right-click it in **Downloads**.
 2. Choose **Extract All**, then **Extract**.
 3. In GitHub, open your `market-pulse` repository.
 4. Choose **Add file → Upload files**.
@@ -41,9 +52,9 @@ Twelve Data batch requests use one API credit per requested symbol, so a full to
 ## Use the dashboard
 
 1. Open the `.netlify.app` link.
-2. The table displays the daily top 10 and the current source label.
-3. Click **Review** to see signal reasoning, risk, support/resistance, price trend and return scenarios. Click **Decision** for a plain-language buying case, reasons to wait, and key price levels.
-4. Enter any NSE ticker in **Analyse a specific ticker** for a separate review.
+2. The top 10 uses five compact rows on a large screen and one clear stock card at a time on a small phone. Use **Next** rather than scrolling; the current data source is always named.
+3. Click **Review** for the score explanation, price levels, scenario calculator, chart and company updates. Click **Decision brief** for evidence for strength, evidence for caution, and the price conditions that would change the view.
+4. Use the **Research** tab for any NSE ticker. Switch between **Ticker analysis** and **Return calculator** rather than scrolling through both.
 5. In **My Watchlist & Alerts**, add a ticker and optional target/stop levels. Use **Enable phone alerts** after installing the app on your phone.
 6. In **Investment Scenario Calculator**, enter a ticker and units to buy. It shows the current price per unit, total investment, and base/bull/bear estimates for 1, 3, 6, and 12 months.
 
