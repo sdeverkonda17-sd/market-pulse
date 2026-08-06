@@ -19,12 +19,27 @@ const FALLBACK_NIFTY_UNIVERSE = [
   'SHRIRAMFIN', 'SUNPHARMA', 'TATACONSUM', 'TATASTEEL', 'TATAMOTORS', 'TCS', 'TECHM', 'TITAN', 'TRENT', 'ULTRACEMCO', 'WIPRO'
 ];
 
+// Curated liquid NSE symbol baskets. These are research categories, not NSE
+// indices and are intentionally labelled as sector baskets in the dashboard.
+const SECTOR_UNIVERSES = {
+  banking: ['HDFCBANK', 'ICICIBANK', 'SBIN', 'KOTAKBANK', 'AXISBANK', 'INDUSINDBK', 'BANKBARODA', 'PNB', 'FEDERALBNK', 'IDFCFIRSTB'],
+  defence: ['BEL', 'HAL', 'MAZDOCK', 'COCHINSHIP', 'BDL', 'BEML', 'GRSE', 'MTARTECH', 'DATAPATTNS', 'PARAS'],
+  it: ['TCS', 'INFY', 'HCLTECH', 'WIPRO', 'TECHM', 'LTIM', 'PERSISTENT', 'COFORGE', 'MPHASIS', 'OFSS'],
+  energy: ['RELIANCE', 'ONGC', 'NTPC', 'POWERGRID', 'TATAPOWER', 'ADANIGREEN', 'ADANIPOWER', 'GAIL', 'IOC', 'BPCL'],
+  auto: ['MARUTI', 'M&M', 'TATAMOTORS', 'BAJAJ-AUTO', 'EICHERMOT', 'TVSMOTOR', 'HEROMOTOCO', 'ASHOKLEY', 'BOSCHLTD', 'MOTHERSON'],
+  pharma: ['SUNPHARMA', 'CIPLA', 'DRREDDY', 'DIVISLAB', 'LUPIN', 'AUROPHARMA', 'BIOCON', 'ALKEM', 'TORNTPHARM', 'GLENMARK'],
+  fmcg: ['HINDUNILVR', 'ITC', 'NESTLEIND', 'BRITANNIA', 'TATACONSUM', 'DABUR', 'GODREJCP', 'MARICO', 'COLPAL', 'VBL'],
+  metals: ['TATASTEEL', 'HINDALCO', 'JSWSTEEL', 'COALINDIA', 'VEDL', 'JINDALSTEL', 'NMDC', 'SAIL', 'HINDZINC', 'NALCO'],
+  infrastructure: ['LT', 'ULTRACEMCO', 'ADANIPORTS', 'GRASIM', 'SIEMENS', 'ABB', 'CUMMINSIND', 'IRB', 'NBCC', 'KEI']
+};
+
 let leadersCache = null;
 let leadersCachedAt = 0;
 let fallbackLeadersCache = null;
 let fallbackLeadersCachedAt = 0;
 let yahooLeadersCache = null;
 let yahooLeadersCachedAt = 0;
+const sectorCache = new Map();
 
 const number = value => Number(String(value ?? 0).replace(/,/g, '')) || 0;
 const json = (statusCode, body, cacheControl = 'no-store') => ({
@@ -454,6 +469,47 @@ async function fallbackStock(symbol) {
   }
 }
 
+function sectorSnapshot(analysis) {
+  const history = (analysis.history || []).filter(point => Number(point.close) > 0);
+  const closes = history.map(point => Number(point.close));
+  const latest = closes.at(-1) || Number(analysis.stock.lastPrice) || 0;
+  const threeMonthBase = closes.at(Math.max(0, closes.length - 64)) || latest;
+  const trend3m = threeMonthBase ? (latest - threeMonthBase) / threeMonthBase * 100 : 0;
+  const support = Math.min(...(closes.slice(-20).length ? closes.slice(-20) : [latest]));
+  const resistance = Math.max(...(closes.slice(-20).length ? closes.slice(-20) : [latest]));
+  const returns = closes.slice(1).map((value, index) => Math.log(value / closes[index])).filter(Number.isFinite);
+  const volatility = returns.length
+    ? Math.sqrt(returns.reduce((sum, value) => sum + value * value, 0) / returns.length) * Math.sqrt(252) * 100
+    : 0;
+  // A bounded scenario, not a target or guaranteed forecast. It combines
+  // recent trend with volatility so that extreme moves are not extrapolated.
+  const scenario12m = Math.max(-45, Math.min(60, trend3m * 1.7 - volatility * 0.12));
+  return { ...analysis.stock, trend3m, support, resistance, volatility, scenario12m };
+}
+
+async function sectorLeaders(sector) {
+  const key = String(sector || '').toLowerCase();
+  const universe = SECTOR_UNIVERSES[key];
+  if (!universe) throw new Error('Unknown sector');
+  const cached = sectorCache.get(key);
+  if (cached && Date.now() - cached.at < 3 * 60 * 1000) return cached.value;
+  const results = await mapWithConcurrency(universe, 6, async symbol => sectorSnapshot(await fallbackStock(symbol)));
+  const leaders = results.flatMap(result => result.value ? [result.value] : []);
+  if (leaders.length < 7) throw new Error(`Only ${leaders.length} of ${universe.length} sector symbols returned usable market data.`);
+  const sources = [...new Set(leaders.map(stock => stock.dataSource).filter(Boolean))];
+  const value = {
+    sector: key,
+    universeCount: leaders.length,
+    leaders: leaders.sort((a, b) => b.pChange - a.pChange).slice(0, 10),
+    asOf: new Date().toISOString(),
+    source: sources.length === 1 ? sources[0] : 'Mixed NSE-symbol fallback data',
+    fallback: true,
+    providerNotice: 'Sector baskets use daily NSE-symbol fallback data when NSE public feeds are unavailable. Trend and 12-month figures are bounded scenarios, not price targets.'
+  };
+  sectorCache.set(key, { at: Date.now(), value });
+  return value;
+}
+
 function unavailable(error, fallbackError) {
   return json(503, {
     error: 'NSE data is temporarily unavailable',
@@ -466,7 +522,12 @@ function unavailable(error, fallbackError) {
 exports.handler = async event => {
   const type = event.queryStringParameters?.type || 'leaders';
   const symbol = String(event.queryStringParameters?.symbol || '').toUpperCase().replace(/[^A-Z0-9&-]/g, '');
+  const sector = String(event.queryStringParameters?.sector || '').toLowerCase().replace(/[^a-z]/g, '');
   if (type === 'updates') return json(200, await marketUpdates(), 'public, max-age=60');
+  if (type === 'sector') {
+    try { return json(200, await sectorLeaders(sector), 'public, max-age=60'); }
+    catch (error) { return json(503, { error: 'Sector data is temporarily unavailable', detail: error.message, retryAfterSeconds: 60 }); }
+  }
   if (type !== 'leaders' && (type !== 'stock' || !symbol)) return json(400, { error: 'Invalid request' });
   try {
     if (type === 'leaders') return json(200, await leaders(), 'public, max-age=45');

@@ -4,13 +4,13 @@ Market Pulse is an Indian-stock research dashboard. It must be deployed to Netli
 
 ## Data-source order
 
-1. When the private AWS gateway has an active Sharekhan customer session, **Sharekhan authorised API** daily historical data is used for the NIFTY 50 ranking and individual ticker charts.
-2. If Sharekhan is not connected or cannot return a result, **NSE India** is tried for the NIFTY 50 ranking, ticker quote, price history, and corporate disclosures.
-3. If NSE is temporarily unreachable, the dashboard tries **Twelve Data** when its API key is configured in Netlify.
-4. If Twelve Data is not configured or does not respond, the dashboard uses its free **Yahoo Finance NSE-symbol fallback** automatically. No API key is needed for this last-resort source.
+1. **NSE India** is tried first for the NIFTY 50 ranking, ticker quote, price history, and corporate disclosures.
+2. If NSE is temporarily unreachable, the dashboard tries **Twelve Data** when its API key is configured in Netlify.
+3. If Twelve Data is not configured or does not respond, the dashboard uses its free **Yahoo Finance NSE-symbol fallback** automatically. No API key is needed for this last-resort source.
+4. The sector screener uses curated NSE-symbol baskets and follows the same Twelve Data then Yahoo fallback route. It labels the provider rather than presenting the basket as an official NSE sector index.
 5. If all live sources fail, the dashboard shows the last saved result on the device, clearly marked as saved data.
 
-The screen and every stock-review popup name the source. Sharekhan data in this version is daily historical data; real-time streaming is not enabled. Yahoo Finance fallback data is informational, may be delayed, and is not an official NSE feed. Verify a trade or corporate disclosure on NSE.
+The screen and every stock-review popup name the source. Yahoo Finance fallback data is informational, may be delayed, and is not an official NSE feed. Verify a trade or corporate disclosure on NSE.
 
 ## Deploy on Windows
 

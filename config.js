@@ -1,3 +1,3 @@
-// Public, non-secret runtime configuration. The gateway is read-only and
-// credentials remain on the Lightsail server.
-window.MARKET_PULSE_API_URL = 'https://marketpulse-suman.duckdns.org/api/market';
+// The Lightsail gateway was removed. Use Netlify's deployed function so the
+// dashboard continues to use its NSE-first route and free NSE-symbol fallback.
+window.MARKET_PULSE_API_URL = '/api/market';

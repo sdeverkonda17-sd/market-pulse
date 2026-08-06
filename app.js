@@ -6,7 +6,8 @@ const STOCK_CACHE_PREFIX = 'market-pulse-nse-stock-v28:';
 const WATCHLIST_KEY = 'market-pulse-watchlist-v1';
 const WATCH_ALERTS_KEY = 'market-pulse-watch-alerts-v1';
 const MAX_WATCHLIST_SIZE = 8;
-const state = { leaders: [], selected: null, universeCount: 0, watchlist: [], watchRows: [] };
+const state = { leaders: [], selected: null, universeCount: 0, watchlist: [], watchRows: [], sector: 'banking', sectorLoaded: false };
+const SECTOR_LABELS = { banking: 'Banking', defence: 'Defence', it: 'IT', energy: 'Energy', auto: 'Auto', pharma: 'Pharma', fmcg: 'FMCG', metals: 'Metals', infrastructure: 'Infrastructure' };
 
 function safe(text) {
   return String(text ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
@@ -27,10 +28,12 @@ function writeCache(key, value) {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* A full private-mode store is not fatal. */ }
 }
 
-async function api(type, symbol = '') {
+async function api(type, symbol = '', extra = {}) {
   const endpoint = window.MARKET_PULSE_API_URL || '/api/market';
   const separator = endpoint.includes('?') ? '&' : '?';
-  const url = `${endpoint}${separator}type=${encodeURIComponent(type)}${symbol ? `&symbol=${encodeURIComponent(symbol)}` : ''}`;
+  const params = new URLSearchParams({ type, ...extra });
+  if (symbol) params.set('symbol', symbol);
+  const url = `${endpoint}${separator}${params.toString()}`;
   const response = await fetch(url, { cache: 'no-store' });
   let payload = null;
   try { payload = await response.json(); } catch { /* A non-JSON provider response is handled below. */ }
@@ -72,6 +75,47 @@ function renderLeaders() {
   $('#universe-count').textContent = state.universeCount || '-';
   $('#buy-count').textContent = leaders.filter(stock => stock.signal === 'BUY').length;
   $('#top-mover').textContent = leaders[0] ? `${leaders[0].symbol} ${percent(leaders[0].pChange)}` : '-';
+}
+
+function renderSectorLeaders(data) {
+  const leaders = (data.leaders || []).map(scoreStock).filter(stock => stock.lastPrice > 0);
+  const table = $('#sector-table');
+  if (!table) return;
+  table.innerHTML = leaders.map((stock, index) => `
+    <tr>
+      <td>${index + 1}</td>
+      <td class="company">${safe(stock.symbol)}<small>${safe(stock.name)}</small></td>
+      <td>${money.format(stock.lastPrice)}</td>
+      <td class="${stock.pChange >= 0 ? 'positive' : 'negative'}">${percent(stock.pChange)}</td>
+      <td class="${stock.trend3m >= 0 ? 'positive' : 'negative'}">${percent(stock.trend3m)}</td>
+      <td><span class="signal ${stock.signal}">${stock.signal}</span><small class="table-subtext">${stock.risk} risk</small></td>
+      <td class="${stock.scenario12m >= 0 ? 'positive' : 'negative'}">${percent(stock.scenario12m)}<small class="table-subtext">base scenario</small></td>
+      <td><strong>${money.format(stock.support)}</strong><small class="table-subtext">S ${money.format(stock.support)} · R ${money.format(stock.resistance)}</small></td>
+      <td class="stock-actions"><button class="review-button" data-review="${safe(stock.symbol)}" type="button">Review</button><button class="decision-button" data-decision="${safe(stock.symbol)}" type="button">Decision</button></td>
+    </tr>`).join('') || '<tr><td colspan="9" class="connection-note">No sector prices are available right now. Try again shortly.</td></tr>';
+  const label = SECTOR_LABELS[data.sector] || 'Sector';
+  const note = $('#sector-note');
+  if (note) note.textContent = `${label} basket · ${data.universeCount || leaders.length} symbols · ${data.source || 'market data'}`;
+  const insight = $('#sector-insight');
+  if (insight) insight.textContent = data.providerNotice || 'Signals show short-term momentum; support, resistance, and 12-month figures are research scenarios, not targets.';
+}
+
+async function loadSector(sector = state.sector) {
+  const normalized = String(sector || '').toLowerCase();
+  if (!SECTOR_LABELS[normalized]) return;
+  state.sector = normalized;
+  const note = $('#sector-note');
+  const table = $('#sector-table');
+  document.querySelectorAll('[data-sector]').forEach(button => button.classList.toggle('is-active', button.dataset.sector === normalized));
+  if (note) note.textContent = `Loading ${SECTOR_LABELS[normalized]} sector data…`;
+  if (table) table.innerHTML = '<tr><td colspan="9" class="connection-note">Loading the sector basket…</td></tr>';
+  try {
+    renderSectorLeaders(await api('sector', '', { sector: normalized }));
+    state.sectorLoaded = true;
+  } catch (error) {
+    if (note) note.textContent = `${SECTOR_LABELS[normalized]} sector data is temporarily unavailable`;
+    if (table) table.innerHTML = `<tr><td colspan="9" class="connection-note">${safe(error.message)}. Retry in a minute.</td></tr>`;
+  }
 }
 
 function renderNseUnavailable(detail) {
@@ -487,7 +531,79 @@ function addOrUpdateWatch(symbol, target = null, stop = null) {
   void refreshWatchlist();
 }
 
+function activateWorkspaceTab(name) {
+  document.querySelectorAll('[data-tab]').forEach(button => {
+    const active = button.dataset.tab === name;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  document.querySelectorAll('.tab-panel').forEach(panel => {
+    const active = panel.id === `panel-${name}`;
+    panel.classList.toggle('is-active', active);
+    panel.hidden = !active;
+  });
+  if (name === 'sectors' && !state.sectorLoaded) void loadSector();
+  if (name === 'updates') void loadUpdates();
+  if (name === 'watchlist') void refreshWatchlist();
+}
+
+function setupWorkspace() {
+  const main = document.querySelector('main');
+  const hero = main?.querySelector('.hero');
+  if (!main || !hero || document.querySelector('.workspace-tabs')) return;
+  main.classList.add('app-shell');
+  hero.classList.add('workspace-header');
+  const heroEyebrow = hero.querySelector('.eyebrow');
+  const heroTitle = hero.querySelector('h1');
+  const heroDescription = hero.querySelector('p:not(.eyebrow)');
+  const refreshButton = hero.querySelector('#refresh');
+  if (heroEyebrow) heroEyebrow.textContent = 'NSE MARKET WORKSPACE';
+  if (heroTitle) heroTitle.textContent = 'Simple research, one view at a time.';
+  if (heroDescription) heroDescription.textContent = 'Top 10, sector momentum, ticker analysis, alerts, and exchange updates—kept in focused tabs.';
+  if (refreshButton) refreshButton.textContent = 'Refresh data';
+  const tabs = document.createElement('nav');
+  tabs.className = 'workspace-tabs';
+  tabs.setAttribute('role', 'tablist');
+  tabs.setAttribute('aria-label', 'Market Pulse sections');
+  tabs.innerHTML = [
+    ['market', 'Top 10'], ['sectors', 'Sectors'], ['research', 'Research'], ['updates', 'Updates'], ['watchlist', 'Watchlist']
+  ].map(([key, label], index) => `<button class="workspace-tab${index === 0 ? ' is-active' : ''}" id="tab-${key}" role="tab" aria-selected="${index === 0}" aria-controls="panel-${key}" data-tab="${key}" type="button">${label}</button>`).join('');
+  const panels = document.createElement('div');
+  panels.className = 'tab-panels';
+  const createPanel = (key, label) => {
+    const panel = document.createElement('section');
+    panel.className = `tab-panel${key === 'market' ? ' is-active' : ''}`;
+    panel.id = `panel-${key}`;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', `tab-${key}`);
+    panel.hidden = key !== 'market';
+    panel.dataset.label = label;
+    panels.append(panel);
+    return panel;
+  };
+  const market = createPanel('market', 'Top 10');
+  const sectors = createPanel('sectors', 'Sectors');
+  const research = createPanel('research', 'Research');
+  const updates = createPanel('updates', 'Updates');
+  const watchlist = createPanel('watchlist', 'Watchlist');
+  ['.disclaimer', '.metric-grid', '.screening'].forEach(selector => { const node = main.querySelector(selector); if (node) market.append(node); });
+  ['.lookup-card', '.investment-card'].forEach(selector => { const node = main.querySelector(selector); if (node) research.append(node); });
+  const sectorContent = document.createElement('div');
+  sectorContent.className = 'sector-workspace';
+  sectorContent.innerHTML = `<div class="section-title sector-heading"><div><p class="eyebrow">SECTOR MOMENTUM</p><h2>Top 10 stocks by sector</h2></div><span id="sector-note">Choose a sector to load the latest ranking.</span></div><div class="sector-tabs" role="tablist" aria-label="NSE sector ranking">${Object.entries(SECTOR_LABELS).map(([key, label], index) => `<button class="sector-tab${index === 0 ? ' is-active' : ''}" data-sector="${key}" type="button">${label}</button>`).join('')}</div><div class="sector-insight" id="sector-insight" aria-live="polite">Sector analysis uses daily NSE-symbol data. It is research, not a price target.</div><div class="table-wrap sector-table-wrap"><table><thead><tr><th>#</th><th>Company</th><th>Last price</th><th>Today</th><th>3M trend</th><th>Signal</th><th>12M scenario</th><th>Trade levels</th><th>Actions</th></tr></thead><tbody id="sector-table"></tbody></table></div>`;
+  sectors.append(sectorContent);
+  const updatesCard = main.querySelector('.updates-card'); if (updatesCard) updates.append(updatesCard);
+  const watchlistCard = main.querySelector('.watchlist-card'); if (watchlistCard) watchlist.append(watchlistCard);
+  hero.after(tabs, panels);
+  tabs.addEventListener('click', event => {
+    const button = event.target.closest('[data-tab]');
+    if (button) activateWorkspaceTab(button.dataset.tab);
+  });
+}
+
 document.addEventListener('click', event => {
+  const sector = event.target.closest('[data-sector]');
+  if (sector) return void loadSector(sector.dataset.sector);
   const review = event.target.closest('[data-review]');
   if (review) return openReview(review.dataset.review);
   const decision = event.target.closest('[data-decision]');
@@ -537,6 +653,7 @@ $('#enable-device-alerts').addEventListener('click', async () => {
 });
 
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js');
+setupWorkspace();
 state.watchlist = readWatchlist();
 renderWatchlist();
 updateAlertButton();
