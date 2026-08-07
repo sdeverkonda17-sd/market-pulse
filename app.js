@@ -65,7 +65,7 @@ function compactWorkspace() {
 }
 
 function visiblePage(items, page) {
-  const size = compactWorkspace() ? 3 : 10;
+  const size = 10;
   const pages = Math.max(1, Math.ceil(items.length / size));
   const active = Math.max(0, Math.min(page, pages - 1));
   return { items: items.slice(active * size, active * size + size), page: active, pages, size };
