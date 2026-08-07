@@ -1,7 +1,11 @@
 const NSE = 'https://www.nseindia.com';
 const TWELVE_DATA = 'https://api.twelvedata.com';
 const YAHOO_FINANCE = 'https://query1.finance.yahoo.com';
+const UPSTOX = 'https://api.upstox.com';
+const UPSTOX_NSE_INSTRUMENTS = 'https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz';
+const { gunzipSync } = require('node:zlib');
 const TWELVE_DATA_API_KEY = process.env.TWELVE_DATA_API_KEY;
+const UPSTOX_ANALYTICS_TOKEN = process.env.UPSTOX_ANALYTICS_TOKEN;
 const API_TIMEOUT_MS = 7000;
 const headers = {
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124 Safari/537.36',
@@ -39,6 +43,11 @@ let fallbackLeadersCache = null;
 let fallbackLeadersCachedAt = 0;
 let yahooLeadersCache = null;
 let yahooLeadersCachedAt = 0;
+let upstoxLeadersCache = null;
+let upstoxLeadersCachedAt = 0;
+let upstoxInstrumentIndex = null;
+let upstoxInstrumentIndexedAt = 0;
+const upstoxStockCache = new Map();
 const sectorCache = new Map();
 
 const number = value => Number(String(value ?? 0).replace(/,/g, '')) || 0;
@@ -48,13 +57,13 @@ const json = (statusCode, body, cacheControl = 'no-store') => ({
   body: JSON.stringify(body)
 });
 
-async function fetchWithTimeout(url, options = {}, source = 'Market data') {
+async function fetchWithTimeout(url, options = {}, source = 'Market data', timeoutMs = API_TIMEOUT_MS) {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(url, { ...options, signal: controller.signal });
   } catch (error) {
-    if (error.name === 'AbortError') throw new Error(`${source} did not respond within 7 seconds`);
+    if (error.name === 'AbortError') throw new Error(`${source} did not respond within ${Math.round(timeoutMs / 1000)} seconds`);
     throw error;
   } finally {
     clearTimeout(timeout);
@@ -87,6 +96,132 @@ async function twelve(path) {
   const payload = await response.json();
   if (payload?.status === 'error') throw new Error(payload.message || 'Fallback provider rejected the request');
   return payload;
+}
+
+function requireUpstox() {
+  if (!UPSTOX_ANALYTICS_TOKEN) {
+    throw new Error('Upstox is not configured. Add UPSTOX_ANALYTICS_TOKEN in Netlify environment variables.');
+  }
+}
+
+async function upstox(path) {
+  requireUpstox();
+  const response = await fetchWithTimeout(`${UPSTOX}${path}`, {
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${UPSTOX_ANALYTICS_TOKEN}`
+    }
+  }, 'Upstox');
+  if (!response.ok) {
+    const detail = (await response.text()).slice(0, 220);
+    throw new Error(`Upstox returned ${response.status}${detail ? `: ${detail}` : ''}`);
+  }
+  const payload = await response.json();
+  if (payload?.status === 'error') throw new Error(payload.errors?.[0]?.message || payload.message || 'Upstox rejected the request');
+  return payload;
+}
+
+async function upstoxInstruments() {
+  if (upstoxInstrumentIndex && Date.now() - upstoxInstrumentIndexedAt < 18 * 60 * 60 * 1000) return upstoxInstrumentIndex;
+  const response = await fetchWithTimeout(UPSTOX_NSE_INSTRUMENTS, { headers: { Accept: 'application/gzip, application/json' } }, 'Upstox instrument list', 15000);
+  if (!response.ok) throw new Error(`Upstox instrument list returned ${response.status}`);
+  const buffer = Buffer.from(await response.arrayBuffer());
+  let text;
+  try { text = gunzipSync(buffer).toString('utf8'); }
+  catch { text = buffer.toString('utf8'); }
+  const rows = JSON.parse(text);
+  const index = new Map();
+  for (const item of rows) {
+    const symbol = String(item.trading_symbol || '').toUpperCase();
+    if (item.segment === 'NSE_EQ' && symbol && item.instrument_key && ['EQ', 'BE'].includes(String(item.instrument_type || ''))) {
+      index.set(symbol, { symbol, name: item.name || symbol, instrumentKey: item.instrument_key });
+    }
+  }
+  if (index.size < 100) throw new Error('Upstox instrument list did not contain enough NSE equities');
+  upstoxInstrumentIndex = index;
+  upstoxInstrumentIndexedAt = Date.now();
+  return index;
+}
+
+function fromUpstoxQuote(symbol, instrument, quote) {
+  const live = quote.live_ohlc || quote.ohlc || {};
+  const previous = quote.prev_ohlc || {};
+  const lastPrice = number(quote.last_price || live.close);
+  const previousClose = number(previous.close);
+  return {
+    symbol,
+    name: instrument.name || symbol,
+    lastPrice,
+    pChange: previousClose ? (lastPrice - previousClose) / previousClose * 100 : 0,
+    dayHigh: number(live.high) || lastPrice,
+    dayLow: number(live.low) || lastPrice,
+    yearHigh: 0,
+    yearLow: 0,
+    volume: number(live.volume),
+    dataSource: 'Upstox Analytics Token (NSE)'
+  };
+}
+
+async function upstoxQuotes(symbols) {
+  const instruments = await upstoxInstruments();
+  const requested = symbols.map(symbol => ({ symbol, instrument: instruments.get(symbol) })).filter(item => item.instrument);
+  if (!requested.length) throw new Error('No requested NSE symbols were found in the Upstox instrument list');
+  const keys = requested.map(item => item.instrument.instrumentKey).join(',');
+  const payload = await upstox(`/v3/market-quote/ohlc?instrument_key=${encodeURIComponent(keys)}&interval=1d`);
+  const byInstrument = new Map(Object.values(payload.data || {}).map(quote => [quote.instrument_token, quote]));
+  return requested.flatMap(({ symbol, instrument }) => {
+    const quote = byInstrument.get(instrument.instrumentKey);
+    const stock = quote ? fromUpstoxQuote(symbol, instrument, quote) : null;
+    return stock?.lastPrice > 0 ? [stock] : [];
+  });
+}
+
+async function upstoxDailyHistory(instrumentKey) {
+  const end = new Date();
+  const start = new Date(end);
+  start.setFullYear(start.getFullYear() - 1);
+  const date = value => value.toISOString().slice(0, 10);
+  const payload = await upstox(`/v3/historical-candle/${encodeURIComponent(instrumentKey)}/days/1/${date(end)}/${date(start)}`);
+  return (payload.data?.candles || [])
+    .map(candle => ({
+      date: String(candle[0] || '').slice(0, 10),
+      open: number(candle[1]), high: number(candle[2]), low: number(candle[3]), close: number(candle[4]), volume: number(candle[5])
+    }))
+    .filter(row => row.date && row.close > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+async function upstoxStock(symbol) {
+  const cached = upstoxStockCache.get(symbol);
+  if (cached && Date.now() - cached.at < 3 * 60 * 1000) return cached.value;
+  const instruments = await upstoxInstruments();
+  const instrument = instruments.get(symbol);
+  if (!instrument) throw new Error(`${symbol} was not found in the Upstox NSE instrument list`);
+  const [quotes, history] = await Promise.all([upstoxQuotes([symbol]), upstoxDailyHistory(instrument.instrumentKey)]);
+  const quote = quotes[0];
+  if (!quote) throw new Error(`Upstox returned no current quote for ${symbol}`);
+  const closes = history.map(row => row.close);
+  const highs = history.map(row => row.high || row.close);
+  const lows = history.map(row => row.low || row.close);
+  const latestHistory = history.at(-1);
+  const previousHistory = history.at(-2);
+  const stock = {
+    ...quote,
+    lastPrice: quote.lastPrice || latestHistory?.close || 0,
+    pChange: quote.pChange || (previousHistory?.close ? (latestHistory.close - previousHistory.close) / previousHistory.close * 100 : 0),
+    yearHigh: highs.length ? Math.max(...highs) : 0,
+    yearLow: lows.length ? Math.min(...lows) : 0
+  };
+  const value = {
+    stock,
+    history: history.map(({ date, close }) => ({ date, close })),
+    announcements: [],
+    source: 'Upstox Analytics Token (NSE)',
+    providerNotice: 'Read-only Upstox market data. Corporate disclosures continue to use NSE when available.'
+  };
+  upstoxStockCache.set(symbol, { at: Date.now(), value });
+  return value;
 }
 
 async function yahooChart(symbol, range = '1y') {
@@ -341,6 +476,22 @@ async function leaders() {
   return result;
 }
 
+async function upstoxLeaders() {
+  if (upstoxLeadersCache && Date.now() - upstoxLeadersCachedAt < 45 * 1000) return upstoxLeadersCache;
+  const all = await upstoxQuotes(FALLBACK_NIFTY_UNIVERSE);
+  if (all.length < 45) throw new Error(`Upstox returned only ${all.length} of the 50 tracked NIFTY symbols`);
+  const result = {
+    universeCount: all.length,
+    leaders: all.sort((a, b) => b.pChange - a.pChange).slice(0, 10),
+    asOf: new Date().toISOString(),
+    source: 'Upstox Analytics Token (NSE)',
+    providerNotice: 'Read-only Upstox market snapshots. Rankings use the tracked NIFTY 50 universe and are refreshed on request.'
+  };
+  upstoxLeadersCache = result;
+  upstoxLeadersCachedAt = Date.now();
+  return result;
+}
+
 async function twelveLeaders() {
   if (fallbackLeadersCache && Date.now() - fallbackLeadersCachedAt < 60 * 1000) return fallbackLeadersCache;
   const requested = FALLBACK_NIFTY_UNIVERSE.map(symbol => `${symbol}:NSE`).join(',');
@@ -469,6 +620,39 @@ async function fallbackStock(symbol) {
   }
 }
 
+// Upstox is the preferred authenticated source when the read-only Analytics
+// token is present. NSE is retained as the next option because it also supplies
+// corporate disclosures and avoids making the dashboard dependent on one API.
+async function resilientLeaders() {
+  const failures = [];
+  if (UPSTOX_ANALYTICS_TOKEN) {
+    try { return await upstoxLeaders(); }
+    catch (error) { failures.push(`Upstox: ${error.message}`); }
+  }
+  try { return await leaders(); }
+  catch (error) { failures.push(`NSE: ${error.message}`); }
+  try { return await fallbackLeaders(); }
+  catch (error) {
+    failures.push(`Fallback: ${error.message}`);
+    throw new Error(failures.join('. '));
+  }
+}
+
+async function resilientStock(symbol) {
+  const failures = [];
+  if (UPSTOX_ANALYTICS_TOKEN) {
+    try { return await upstoxStock(symbol); }
+    catch (error) { failures.push(`Upstox: ${error.message}`); }
+  }
+  try { return await nseStock(symbol); }
+  catch (error) { failures.push(`NSE: ${error.message}`); }
+  try { return await fallbackStock(symbol); }
+  catch (error) {
+    failures.push(`Fallback: ${error.message}`);
+    throw new Error(failures.join('. '));
+  }
+}
+
 function sectorSnapshot(analysis) {
   const history = (analysis.history || []).filter(point => Number(point.close) > 0);
   const closes = history.map(point => Number(point.close));
@@ -493,7 +677,7 @@ async function sectorLeaders(sector) {
   if (!universe) throw new Error('Unknown sector');
   const cached = sectorCache.get(key);
   if (cached && Date.now() - cached.at < 3 * 60 * 1000) return cached.value;
-  const results = await mapWithConcurrency(universe, 6, async symbol => sectorSnapshot(await fallbackStock(symbol)));
+  const results = await mapWithConcurrency(universe, 6, async symbol => sectorSnapshot(await resilientStock(symbol)));
   const leaders = results.flatMap(result => result.value ? [result.value] : []);
   if (leaders.length < 7) throw new Error(`Only ${leaders.length} of ${universe.length} sector symbols returned usable market data.`);
   const sources = [...new Set(leaders.map(stock => stock.dataSource).filter(Boolean))];
@@ -502,19 +686,22 @@ async function sectorLeaders(sector) {
     universeCount: leaders.length,
     leaders: leaders.sort((a, b) => b.pChange - a.pChange).slice(0, 10),
     asOf: new Date().toISOString(),
-    source: sources.length === 1 ? sources[0] : 'Mixed NSE-symbol fallback data',
-    fallback: true,
-    providerNotice: 'Sector baskets use daily NSE-symbol fallback data when NSE public feeds are unavailable. Trend and 12-month figures are bounded scenarios, not price targets.'
+    source: sources.length === 1 ? sources[0] : 'Mixed market-data sources',
+    fallback: leaders.some(stock => /fallback/i.test(String(stock.dataSource || ''))),
+    providerNotice: UPSTOX_ANALYTICS_TOKEN
+      ? 'Sector baskets use Upstox read-only NSE market data first, with NSE and free fallbacks if needed. Trend and 12-month figures are bounded scenarios, not price targets.'
+      : 'Sector baskets use NSE public data first and daily NSE-symbol fallback data when it is unavailable. Trend and 12-month figures are bounded scenarios, not price targets.'
   };
   sectorCache.set(key, { at: Date.now(), value });
   return value;
 }
 
-function unavailable(error, fallbackError) {
+function unavailable(error) {
   return json(503, {
-    error: 'NSE data is temporarily unavailable',
-    detail: fallbackError ? `${error.message}. Fallback provider: ${fallbackError.message}` : error.message,
+    error: 'Market data is temporarily unavailable',
+    detail: error.message,
     retryAfterSeconds: 60,
+    upstoxConfigured: Boolean(UPSTOX_ANALYTICS_TOKEN),
     fallbackConfigured: Boolean(TWELVE_DATA_API_KEY)
   });
 }
@@ -530,17 +717,13 @@ exports.handler = async event => {
   }
   if (type !== 'leaders' && (type !== 'stock' || !symbol)) return json(400, { error: 'Invalid request' });
   try {
-    if (type === 'leaders') return json(200, await leaders(), 'public, max-age=45');
-    return json(200, await nseStock(symbol), 'public, max-age=60');
-  } catch (nseError) {
-    try {
-      if (type === 'leaders') return json(200, await fallbackLeaders(), 'public, max-age=45');
-      return json(200, await fallbackStock(symbol), 'public, max-age=60');
-    } catch (fallbackError) {
-      if (type === 'leaders' && leadersCache) {
-        return json(200, { ...leadersCache, source: 'NSE saved result', savedAt: new Date(leadersCachedAt).toISOString(), delayed: true }, 'public, max-age=30');
-      }
-      return unavailable(nseError, fallbackError);
+    if (type === 'leaders') return json(200, await resilientLeaders(), 'public, max-age=45');
+    return json(200, await resilientStock(symbol), 'public, max-age=60');
+  } catch (error) {
+    const saved = upstoxLeadersCache || leadersCache || fallbackLeadersCache || yahooLeadersCache;
+    if (type === 'leaders' && saved) {
+      return json(200, { ...saved, source: `${saved.source || 'Market data'} saved result`, savedAt: new Date(upstoxLeadersCachedAt || leadersCachedAt || fallbackLeadersCachedAt || yahooLeadersCachedAt).toISOString(), delayed: true }, 'public, max-age=30');
     }
+    return unavailable(error);
   }
 };
