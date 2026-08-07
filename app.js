@@ -1,8 +1,8 @@
 const $ = selector => document.querySelector(selector);
 const money = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 });
 const percent = value => `${value >= 0 ? '+' : ''}${Number(value || 0).toFixed(2)}%`;
-const LEADERS_CACHE_KEY = 'market-pulse-nse-leaders-v28';
-const STOCK_CACHE_PREFIX = 'market-pulse-nse-stock-v28:';
+const LEADERS_CACHE_KEY = 'market-pulse-nse-leaders-v34';
+const STOCK_CACHE_PREFIX = 'market-pulse-nse-stock-v34:';
 const WATCHLIST_KEY = 'market-pulse-watchlist-v1';
 const WATCH_ALERTS_KEY = 'market-pulse-watch-alerts-v1';
 const MAX_WATCHLIST_SIZE = 8;
@@ -45,11 +45,11 @@ function scoreStock(stock) {
   const move = Number(stock.pChange || 0);
   const range = Math.max(0, Number(stock.dayHigh || stock.lastPrice) - Number(stock.dayLow || stock.lastPrice));
   const rangePct = stock.lastPrice ? range / stock.lastPrice * 100 : 0;
-  const nearHigh = stock.yearHigh ? stock.lastPrice / stock.yearHigh : 1;
+  const nearHigh = stock.yearHigh ? stock.lastPrice / stock.yearHigh : null;
   let score = 50
     + (move >= 2 ? 28 : move >= 1 ? 18 : move > 0 ? 9 : move <= -2 ? -28 : move < 0 ? -14 : 0)
     + (rangePct < 2 ? 8 : rangePct > 5 ? -9 : 0)
-    + (nearHigh > .92 ? 7 : nearHigh < .7 ? -7 : 0);
+    + (nearHigh !== null && nearHigh > .92 ? 7 : nearHigh !== null && nearHigh < .7 ? -7 : 0);
   score = Math.max(0, Math.min(100, Math.round(score)));
   return {
     ...stock,
@@ -65,16 +65,20 @@ function compactWorkspace() {
 }
 
 function visiblePage(items, page) {
-  const size = window.matchMedia('(max-width: 500px)').matches ? 1 : compactWorkspace() ? 2 : 5;
+  const size = compactWorkspace() ? 3 : 10;
   const pages = Math.max(1, Math.ceil(items.length / size));
   const active = Math.max(0, Math.min(page, pages - 1));
   return { items: items.slice(active * size, active * size + size), page: active, pages, size };
 }
 
-function pager(target, page, pages, kind) {
+function pager(target, page, pages, kind, total = 0, size = 0) {
   const node = $(target);
   if (!node) return;
-  node.innerHTML = pages > 1 ? `<button class="pager-button" data-page-kind="${kind}" data-page="${page - 1}" type="button" ${page === 0 ? 'disabled' : ''}>Previous</button><span>Page ${page + 1} of ${pages}</span><button class="pager-button" data-page-kind="${kind}" data-page="${page + 1}" type="button" ${page === pages - 1 ? 'disabled' : ''}>Next</button>` : '';
+  const start = total ? page * size + 1 : 0;
+  const end = total ? Math.min(total, start + size - 1) : 0;
+  node.innerHTML = pages > 1
+    ? `<button class="pager-button" data-page-kind="${kind}" data-page="${page - 1}" type="button" ${page === 0 ? 'disabled' : ''}>Previous</button><span class="pager-status"><strong>${start}-${end}</strong> of ${total}</span><button class="pager-button" data-page-kind="${kind}" data-page="${page + 1}" type="button" ${page === pages - 1 ? 'disabled' : ''}>Next</button>`
+    : (total ? `<span class="pager-status"><strong>${start}-${end}</strong> of ${total}</span>` : '');
 }
 
 function stockCard(stock, index, sector = false) {
@@ -99,7 +103,7 @@ function renderLeaders() {
     </tr>`).join('') || '<tr><td colspan="7" class="connection-note">No market prices are available right now.</td></tr>';
   const cards = $('#stock-cards');
   if (cards) cards.innerHTML = view.items.map((stock, index) => stockCard(stock, view.page * view.size + index)).join('');
-  pager('#stock-pager', view.page, view.pages, 'leaders');
+  pager('#stock-pager', view.page, view.pages, 'leaders', leaders.length, view.size);
   $('#universe-count').textContent = state.universeCount || '-';
   $('#buy-count').textContent = leaders.filter(stock => stock.signal === 'BUY').length;
   $('#top-mover').textContent = leaders[0] ? `${leaders[0].symbol} ${percent(leaders[0].pChange)}` : '-';
@@ -126,7 +130,7 @@ function renderSectorLeaders(data) {
     </tr>`).join('') || '<tr><td colspan="9" class="connection-note">No sector prices are available right now. Try again shortly.</td></tr>';
   const cards = $('#sector-cards');
   if (cards) cards.innerHTML = view.items.map((stock, index) => stockCard(stock, view.page * view.size + index, true)).join('');
-  pager('#sector-pager', view.page, view.pages, 'sector');
+  pager('#sector-pager', view.page, view.pages, 'sector', leaders.length, view.size);
   const label = SECTOR_LABELS[data.sector] || 'Sector';
   const note = $('#sector-note');
   if (note) note.textContent = `${label} basket · ${data.universeCount || leaders.length} symbols · ${data.source || 'market data'}`;
@@ -578,7 +582,7 @@ function renderWatchlist(rows = state.watchRows) {
     const levels = `${item.target ? `Target ${money.format(item.target)}` : 'No target'} · ${item.stop ? `Stop ${money.format(item.stop)}` : 'No stop'}`;
     return `<article class="watch-row ${alert ? 'watch-alert-row' : ''}"><div><strong>${safe(item.symbol)}</strong><small>${metrics ? `${safe(metrics.name)} · ${safe(metrics.dataSource || 'market data')}` : 'Loading market data…'}</small></div><div><span>Last price</span><strong>${metrics ? money.format(metrics.lastPrice) : '—'}</strong><small class="${metrics?.pChange >= 0 ? 'positive' : 'negative'}">${metrics ? percent(metrics.pChange) : '—'}</small></div><div><span>Signal / risk</span><strong>${metrics ? `${safe(metrics.signal)} · ${safe(metrics.risk)}` : '—'}</strong><small>${levels}</small></div><div class="watch-actions"><button class="review-button" data-review="${safe(item.symbol)}" type="button">Review</button><button class="decision-button" data-decision="${safe(item.symbol)}" type="button">Decision</button><button class="watch-edit" data-edit-watch="${safe(item.symbol)}" type="button">Edit</button><button class="watch-remove" data-remove-watch="${safe(item.symbol)}" type="button">Remove</button></div></article>`;
   }).join('');
-  pager('#watch-pager', view.page, view.pages, 'watch');
+  pager('#watch-pager', view.page, view.pages, 'watch', state.watchlist.length, view.size);
   note.textContent = 'Alerts are checked while this dashboard is open or refreshed.';
 }
 
@@ -689,7 +693,10 @@ function setupWorkspace() {
   const watchlist = createPanel('watchlist', 'Watchlist');
   ['.disclaimer', '.metric-grid', '.screening'].forEach(selector => { const node = main.querySelector(selector); if (node) market.append(node); });
   const marketTable = market.querySelector('.table-wrap');
-  if (marketTable) marketTable.insertAdjacentHTML('afterend', '<div id="stock-cards" class="stock-card-list" aria-live="polite"></div><div id="stock-pager" class="data-pager" aria-label="Top 10 pages"></div>');
+  if (marketTable) {
+    marketTable.insertAdjacentHTML('beforebegin', '<div id="stock-pager" class="data-pager" aria-label="Top 10 pages"></div>');
+    marketTable.insertAdjacentHTML('afterend', '<div id="stock-cards" class="stock-card-list" aria-live="polite"></div>');
+  }
   ['.lookup-card', '.investment-card'].forEach(selector => { const node = main.querySelector(selector); if (node) research.append(node); });
   const lookupPane = research.querySelector('.lookup-card');
   const calculatorPane = research.querySelector('.investment-card');
@@ -715,7 +722,10 @@ function setupWorkspace() {
   sectorContent.innerHTML = `<div class="section-title sector-heading"><div><p class="eyebrow">SECTOR MOMENTUM</p><h2>Top 10 stocks by sector</h2></div><span id="sector-note">Choose a sector to load the latest ranking.</span></div><div class="sector-tabs" role="tablist" aria-label="NSE sector ranking">${Object.entries(SECTOR_LABELS).map(([key, label], index) => `<button class="sector-tab${index === 0 ? ' is-active' : ''}" data-sector="${key}" type="button">${label}</button>`).join('')}</div><div class="sector-insight" id="sector-insight" aria-live="polite">Sector analysis uses daily NSE-symbol data. It is research, not a price target.</div><div class="table-wrap sector-table-wrap"><table><thead><tr><th>#</th><th>Company</th><th>Last price</th><th>Today</th><th>3M trend</th><th>Signal</th><th>12M scenario</th><th>Trade levels</th><th>Actions</th></tr></thead><tbody id="sector-table"></tbody></table></div>`;
   sectors.append(sectorContent);
   const sectorTable = sectors.querySelector('.sector-table-wrap');
-  if (sectorTable) sectorTable.insertAdjacentHTML('afterend', '<div id="sector-cards" class="stock-card-list" aria-live="polite"></div><div id="sector-pager" class="data-pager" aria-label="Sector ranking pages"></div>');
+  if (sectorTable) {
+    sectorTable.insertAdjacentHTML('beforebegin', '<div id="sector-pager" class="data-pager" aria-label="Sector ranking pages"></div>');
+    sectorTable.insertAdjacentHTML('afterend', '<div id="sector-cards" class="stock-card-list" aria-live="polite"></div>');
+  }
   const updatesCard = main.querySelector('.updates-card'); if (updatesCard) updates.append(updatesCard);
   const watchlistCard = main.querySelector('.watchlist-card'); if (watchlistCard) { watchlist.append(watchlistCard); watchlistCard.querySelector('#watchlist-items')?.insertAdjacentHTML('afterend', '<div id="watch-pager" class="data-pager" aria-label="Watchlist pages"></div>'); }
   hero.after(tabs, panels);

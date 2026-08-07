@@ -25,7 +25,7 @@ Keep provider tokens in Netlify environment variables, never in GitHub, JavaScri
 
 ## Deploy on Windows
 
-1. Download `market-pulse-dashboard-research-ui-v33.zip` and right-click it in **Downloads**.
+1. Download `market-pulse-dashboard-mobile-v35.zip` and right-click it in **Downloads**.
 2. Choose **Extract All**, then **Extract**.
 3. In GitHub, open your `market-pulse` repository.
 4. Choose **Add file → Upload files**.
@@ -52,7 +52,7 @@ Twelve Data batch requests use one API credit per requested symbol, so a full to
 ## Use the dashboard
 
 1. Open the `.netlify.app` link.
-2. The top 10 uses five compact rows on a large screen and one clear stock card at a time on a small phone. Use **Next** rather than scrolling; the current data source is always named.
+2. The top 10 uses a full table on a large screen. On a phone it shows three clear stock cards per page, with an always-visible **Previous / 1-3 of 10 / Next** control above the cards. Normal vertical scrolling stays available for Review and the return calculator so no result is cut off.
 3. Click **Review** for the score explanation, price levels, scenario calculator, chart and company updates. Click **Decision brief** for evidence for strength, evidence for caution, and the price conditions that would change the view.
 4. Use the **Research** tab for any NSE ticker. Switch between **Ticker analysis** and **Return calculator** rather than scrolling through both.
 5. In **My Watchlist & Alerts**, add a ticker and optional target/stop levels. Use **Enable phone alerts** after installing the app on your phone.
