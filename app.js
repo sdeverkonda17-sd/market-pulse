@@ -810,3 +810,37 @@ state.watchlist = readWatchlist();
 renderWatchlist();
 updateAlertButton();
 refresh();
+
+/* Mobile scrolling + visible title bar */
+.topbar,
+.topbar .brand,
+.topbar .market-status {
+  color: #f7fffb !important;
+}
+
+.topbar .brand small {
+  color: #c4e8d8 !important;
+}
+
+.topbar .ghost-button {
+  color: #f7fffb !important;
+  border-color: rgba(247,255,251,.58) !important;
+  background: rgba(255,255,255,.08) !important;
+}
+
+.data-pager {
+  display: none !important;
+}
+
+@media (max-width: 860px) {
+  .stock-card-list {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+
+  .tab-panel {
+    height: auto !important;
+    overflow: visible !important;
+  }
+}
