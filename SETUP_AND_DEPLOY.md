@@ -1,4 +1,4 @@
-# Market Pulse v39.23 — local testing and Netlify deployment
+# Market Pulse v39.25 — local testing and Netlify deployment
 
 This dashboard must be served through Netlify Dev or deployed to Netlify because market requests use the server-side function at `netlify/functions/market.js`. Do not test it by double-clicking `index.html`.
 
@@ -26,10 +26,10 @@ Use `npm.cmd`, not `npm`, if PowerShell says `npm.ps1 cannot be loaded because r
 
 ### 2. Extract the release
 
-Extract `market-pulse-dashboard-v39.23.zip` to a normal folder such as:
+Extract `market-pulse-dashboard-v39.25.zip` to a normal folder such as:
 
 ```text
-C:\Users\YOUR_NAME\Documents\market-pulse-dashboard-v39.23
+C:\Users\YOUR_NAME\Documents\market-pulse-dashboard-v39.25
 ```
 
 Open that folder in File Explorer. Click the address bar, type `powershell`, and press Enter.
@@ -143,4 +143,6 @@ If functions return 404, verify `netlify.toml` and `netlify/functions/market.js`
 - Tokens are never stored in `config.js` or browser JavaScript.
 - Rotate any token immediately if it is committed or shared.
 - Watchlists, paper trades, timelines and coaching notes remain in browser local storage.
+
+
 

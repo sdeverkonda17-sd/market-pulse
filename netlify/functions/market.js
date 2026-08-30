@@ -663,10 +663,36 @@ function latestPair(payload, aliases) {
 }
 
 function growthFromPair(pair) {
-  if (!pair.latest || !pair.previous) return null;
-  return (pair.latest - pair.previous) / Math.abs(pair.previous) * 100;
+  if (pair.latest === null || pair.latest === undefined || pair.previous === null || pair.previous === undefined || Number(pair.previous) === 0) return null;
+  return (Number(pair.latest) - Number(pair.previous)) / Math.abs(Number(pair.previous)) * 100;
 }
 
+function incomeSeries(payload, categories, particulars = []) {
+  const data = payload?.data ?? payload ?? {};
+  const normal = value => String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const wantedCategories = categories.map(normal);
+  const wantedParticulars = particulars.map(normal);
+  const summaryRows = Array.isArray(data.income_statement) ? data.income_statement : [];
+  let row = summaryRows.find(item => wantedCategories.includes(normal(item.category)));
+  if (!row) {
+    const fullRows = Array.isArray(data.full_statement) ? data.full_statement : [];
+    row = fullRows.find(item => wantedParticulars.includes(normal(item.particular))) || fullRows.find(item => wantedParticulars.some(name => normal(item.particular).includes(name)));
+  }
+  const history = (Array.isArray(row?.history) ? row.history : []).map(item => ({
+    value: financialNumber(item?.value),
+    period: String(item?.period || ''),
+    change: financialNumber(item?.change)
+  })).filter(item => item.value !== null);
+  const latest = history[0] || null, previous = history[1] || null;
+  const calculated = growthFromPair({ latest: latest?.value, previous: previous?.value });
+  return {
+    latest: latest?.value ?? null,
+    previous: previous?.value ?? null,
+    latestPeriod: latest?.period || null,
+    previousPeriod: previous?.period || null,
+    growth: latest?.change ?? calculated
+  };
+}
 async function upstoxFundamentals(instrument) {
   if (!instrument?.isin) return { available: false, note: 'Fundamental data is unavailable because this instrument has no ISIN mapping.' };
   const base = `/v2/fundamentals/${encodeURIComponent(instrument.isin)}`;
@@ -676,16 +702,20 @@ async function upstoxFundamentals(instrument) {
   ]);
   const ratios = ratiosResult.status === 'fulfilled' ? ratiosResult.value : null;
   const income = incomeResult.status === 'fulfilled' ? incomeResult.value : null;
-  const revenue = latestPair(income, ['revenue', 'total income', 'sales']);
-  const profit = latestPair(income, ['net profit', 'profit after tax', 'pat']);
+  const revenue = incomeSeries(income, ['revenue'], ['total revenue', 'revenue']);
+  const profit = incomeSeries(income, ['net_profit'], ['profit after tax', 'net profit']);
   const ratio = aliases => latestPair(ratios, aliases).latest;
   return {
     available: Boolean(ratios || income),
     isin: instrument.isin,
     revenue: revenue.latest,
     netProfit: profit.latest,
-    revenueGrowth: growthFromPair(revenue),
-    profitGrowth: growthFromPair(profit),
+    revenueGrowth: revenue.growth,
+    revenuePeriod: revenue.latestPeriod,
+    revenuePreviousPeriod: revenue.previousPeriod,
+    profitGrowth: profit.growth,
+    profitPeriod: profit.latestPeriod,
+    profitPreviousPeriod: profit.previousPeriod,
     pe: ratio(['price to earnings', 'pe ratio', 'p/e']),
     sectorPe: ratio(['sector pe', 'sector price to earnings']),
     roe: ratio(['return on equity', 'roe']),
@@ -910,25 +940,30 @@ async function sectorLeaders(sector) {
   if (!universe) throw new Error('Unknown sector');
   const cached = sectorCache.get(key);
   if (cached && Date.now() - cached.at < 3 * 60 * 1000) return cached.value;
-  const results = await mapWithConcurrency(universe, 6, async symbol => sectorSnapshot(await resilientStock(symbol)));
+  const results = await mapWithConcurrency(universe, 8, async symbol => sectorSnapshot(await resilientStock(symbol)));
   const leaders = results.flatMap(result => result.value ? [result.value] : []);
-  if (leaders.length < 7) throw new Error(`Only ${leaders.length} of ${universe.length} sector symbols returned usable market data.`);
+  if (!leaders.length) {
+    if (cached?.value) return { ...cached.value, delayed: true, providerNotice: 'Saved sector data is shown because no live symbol completed successfully. Refresh later for a current ranking.' };
+    throw new Error(`None of the ${universe.length} sector symbols returned usable market data.`);
+  }
   const sources = [...new Set(leaders.map(stock => stock.dataSource).filter(Boolean))];
+  const partial = leaders.length < universe.length;
   const value = {
     sector: key,
     universeCount: leaders.length,
+    requestedCount: universe.length,
     leaders: leaders.sort((a, b) => b.pChange - a.pChange).slice(0, 10),
     asOf: new Date().toISOString(),
     source: sources.length === 1 ? sources[0] : 'Mixed market-data sources',
     fallback: leaders.some(stock => /fallback/i.test(String(stock.dataSource || ''))),
-    providerNotice: UPSTOX_ANALYTICS_TOKEN
+    partial,
+    providerNotice: `${partial?`Partial live basket: ${leaders.length} of ${universe.length} symbols returned usable data. `:''}${UPSTOX_ANALYTICS_TOKEN
       ? 'Sector baskets use Upstox read-only NSE market data first, with NSE and free fallbacks if needed. Trend and 12-month figures are bounded scenarios, not price targets.'
-      : 'Sector baskets use NSE public data first and daily NSE-symbol fallback data when it is unavailable. Trend and 12-month figures are bounded scenarios, not price targets.'
+      : 'Sector baskets use NSE public data first and daily NSE-symbol fallback data when it is unavailable. Trend and 12-month figures are bounded scenarios, not price targets.'}`
   };
   sectorCache.set(key, { at: Date.now(), value });
   return value;
 }
-
 async function symbolSuggestions(query){const term=String(query||'').toUpperCase().replace(/[^A-Z0-9& -]/g,' ').trim();if(term.length<2)return {matches:[]};let directory,source='Upstox NSE equity instrument directory';try{directory=[...(await upstoxInstruments()).values()];}catch{const symbols=[...new Set([...FALLBACK_NIFTY_UNIVERSE,...Object.values(SECTOR_UNIVERSES).flat()])];directory=symbols.map(symbol=>({symbol,name:symbol}));source='Configured NSE fallback universe';}const rows=directory.map(item=>({...item,symbolText:item.symbol.toUpperCase(),nameText:String(item.name||'').toUpperCase()})),rank=item=>item.symbolText===term?0:item.symbolText.startsWith(term)?1:item.nameText.startsWith(term)?2:item.symbolText.includes(term)?3:item.nameText.includes(term)?4:99,matches=rows.map(item=>({item,rank:rank(item)})).filter(row=>row.rank<99).sort((a,b)=>a.rank-b.rank||a.item.symbol.localeCompare(b.item.symbol)).slice(0,10).map(row=>({symbol:row.item.symbol,name:row.item.name}));return {matches,query:term,source};}
 
 function unavailable(error) {
@@ -976,4 +1011,7 @@ exports.handler = async event => {
     return unavailable(error);
   }
 };
+
+
+
 
