@@ -1,3 +1,59 @@
+# Market Pulse v39 — reliable stock actions and scrolling
+
+This version keeps the multi-factor research model, fixes stock-action loading and scrolling, and adds explainable machine learning.
+
+- **Explainable ML:** a per-stock three-class logistic-regression model trains on chronological price windows and reports down, sideways and up probabilities.
+- **Honest validation:** every ML view shows chronological holdout accuracy, training-sample count, confidence and strongest drivers. Low-performing models are labelled Low confidence.
+- **Decision safety:** ML remains a separate perspective and never overrides the transparent fundamental, technical or risk rules.
+
+- Stock requests now time out after 15 seconds and fall back to saved data instead of loading forever.
+- Stale responses cannot replace a newer stock review or reopen content after the modal is closed.
+- The stock-review modal has one explicit, touch-friendly scroll area on desktop and mobile.
+
+- **55% fundamentals when available:** annual revenue growth, profit growth, P/E versus sector, ROE versus sector, and ROCE versus sector, supplied through your server-side Upstox token.
+- **45% technical context:** latest price move, daily range, 52-week position, EMA 20/50 trend, RSI 14, and recent volatility.
+- When a provider does not return fundamentals, the dashboard visibly says **technical-only**. Missing data never becomes a hidden positive score.
+- **Recommended** presents three research candidates from the current tracked NIFTY 50 universe. Quantity is only an illustration of how many whole shares are close to a ₹10,000 research budget; it is not personal investment advice.
+- **Review** now contains EMA 20, EMA 50, RSI 14, support/resistance, score inputs, business/valuation metrics, ticker headlines, and India/world market-news context.
+- **Decision brief** gives specific reasons to consider, wait, or avoid based on the actual ticker evidence. Headlines are shown for human review and are deliberately not converted into an automatic buy signal.
+
+## Test locally on a Windows PC
+
+You need Node.js 20 or newer. Do this once:
+
+1. Extract this ZIP to a folder such as `Documents\Market-Pulse-v39`.
+2. Open that folder in File Explorer, click the address bar, type `powershell`, and press Enter.
+3. Run: `npm install --global netlify-cli`
+4. Create a new file named `.env` in this folder. Put this single line inside, replacing the value with your private token:
+
+   `UPSTOX_ANALYTICS_TOKEN=your_upstox_analytics_token_here`
+
+5. Run: `netlify dev`
+6. Open `http://localhost:8888` in Chrome or Edge. Test **Top 10**, **Recommended**, a ticker **Review**, **Decision brief**, and the **Return calculator**.
+7. Stop the local server with `Ctrl + C` when finished.
+
+Never upload the `.env` file or paste the token into GitHub, `app.js`, or a browser form.
+
+### Optional: test from your Android/iPhone on the same Wi-Fi
+
+1. With the PC server stopped, run: `netlify dev --host 0.0.0.0`
+2. On the PC, run `ipconfig` and note the IPv4 address under your active Wi-Fi connection (for example `192.168.1.20`).
+3. On the phone, open `http://YOUR-PC-IP:8888` in its browser. If Windows asks, allow private-network access.
+4. This is only a temporary local test; use the deployed Netlify URL for normal use and installation.
+
+## Deploy this package to your existing Netlify site
+
+1. Extract `market-pulse-dashboard-research-v38.zip`.
+2. In GitHub, open the **market-pulse** repository, then open the **Code** tab.
+3. Choose **Add file → Upload files**. Drag everything *inside* the extracted `market-pulse-dashboard` folder onto the page, including the `netlify` folder and `netlify.toml`.
+4. Commit the changes. Do not upload `.env`.
+5. In Netlify, confirm that `UPSTOX_ANALYTICS_TOKEN` is still present under **Project configuration → Environment variables**. Keep its value private.
+6. Open **Deploys → Trigger deploy → Clear cache and deploy site**. Wait for it to say **Published**.
+7. Open the site in a new tab. If you see an old version, close the tab completely and reopen it; the new service-worker cache is named v38.
+
+The public site does not need a static IP. The Upstox token remains in Netlify’s server environment and is never sent to the browser.
+
+---
 # Market Pulse — setup guide
 
 Market Pulse is an Indian-stock research dashboard. It must be deployed to Netlify because its secure market-data service runs on the server. Do not open `index.html` by double-clicking it.
@@ -25,7 +81,7 @@ Keep provider tokens in Netlify environment variables, never in GitHub, JavaScri
 
 ## Deploy on Windows
 
-1. Download `market-pulse-dashboard-mobile-v35.zip` and right-click it in **Downloads**.
+1. Download `market-pulse-dashboard-research-v38.zip` and right-click it in **Downloads**.
 2. Choose **Extract All**, then **Extract**.
 3. In GitHub, open your `market-pulse` repository.
 4. Choose **Add file → Upload files**.
