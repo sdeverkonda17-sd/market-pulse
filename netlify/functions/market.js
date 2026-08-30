@@ -45,6 +45,8 @@ let yahooLeadersCache = null;
 let yahooLeadersCachedAt = 0;
 let upstoxLeadersCache = null;
 let upstoxLeadersCachedAt = 0;
+let marketMoversCache = null;
+let marketMoversCachedAt = 0;
 let upstoxInstrumentIndex = null;
 let upstoxInstrumentIndexedAt = 0;
 const upstoxStockCache = new Map();
@@ -477,6 +479,53 @@ async function leaders() {
   return result;
 }
 
+function moverCandidate(stock) {
+  const price = number(stock.lastPrice), move = number(stock.pChange), high = number(stock.dayHigh) || price, low = number(stock.dayLow) || price, volume = number(stock.volume);
+  const rangePct = price > 0 ? (high - low) / price * 100 : 0;
+  const belowHighPct = high > 0 ? (high - price) / high * 100 : 100;
+  const checks = { positiveMove: move >= 1 && move <= 6, holdingStrength: belowHighPct <= 1.25, liquidity: volume >= 500000, controlledRange: rangePct <= 6 };
+  const reasons = [
+    checks.positiveMove ? `Up ${move.toFixed(2)}% without exceeding the 6% chase limit.` : (move > 6 ? `Already up ${move.toFixed(2)}%; chasing risk is elevated.` : `Move of ${move.toFixed(2)}% is not yet strong enough.`),
+    checks.holdingStrength ? `Trading within ${belowHighPct.toFixed(2)}% of the day high.` : `${belowHighPct.toFixed(2)}% below the day high; momentum has faded.`,
+    checks.liquidity ? `${volume.toLocaleString('en-IN')} shares traded, above the screening floor.` : `Only ${volume.toLocaleString('en-IN')} shares traded; liquidity is below the screening floor.`,
+    checks.controlledRange ? `Intraday range is a controlled ${rangePct.toFixed(2)}%.` : `Intraday range is ${rangePct.toFixed(2)}%, indicating elevated volatility.`
+  ];
+  const passed = Object.values(checks).filter(Boolean).length;
+  return { ...stock, candidate: passed === 4, candidateScore: passed * 25, checks, reasons, rangePct, belowHighPct };
+}
+
+function fromNseMover(item) {
+  return moverCandidate({
+    symbol: String(item.symbol || ''), name: String(item.symbol || ''), lastPrice: number(item.ltp),
+    pChange: number(item.perChange ?? item.net_price), dayHigh: number(item.high_price), dayLow: number(item.low_price),
+    yearHigh: 0, yearLow: 0, volume: number(item.trade_quantity), turnoverLakhs: number(item.turnover),
+    previousClose: number(item.prev_price), dataSource: 'NSE official movers'
+  });
+}
+
+async function marketMovers() {
+  if (marketMoversCache && Date.now() - marketMoversCachedAt < 60 * 1000) return marketMoversCache;
+  const [gainerPayload, loserPayload] = await Promise.all([
+    nse('/api/live-analysis-variations?index=gainers&type=NIFTY&key=FOSec'),
+    nse('/api/live-analysis-variations?index=loosers&type=NIFTY&key=FOSec')
+  ]);
+  const gainers = (gainerPayload.data || []).map(fromNseMover).filter(stock => stock.lastPrice > 0).sort((a, b) => b.pChange - a.pChange);
+  const losers = (loserPayload.data || []).map(fromNseMover).filter(stock => stock.lastPrice > 0).sort((a, b) => a.pChange - b.pChange);
+  const all = [...gainers, ...losers];
+  if (!gainers.length) throw new Error('NSE returned no usable official gainer rows');
+  const result = {
+    universe: 'NSE F&O securities', universeCount: all.length, gainers: gainers.slice(0, 20),
+    broadMovers: all.filter(stock => Math.abs(stock.pChange) >= 5).sort((a, b) => b.pChange - a.pChange),
+    tradeCandidates: gainers.filter(stock => stock.candidate).sort((a, b) => b.pChange - a.pChange).slice(0, 10),
+    asOf: gainerPayload.timestamp || new Date().toISOString(), source: 'NSE official Top Gainers / Losers (F&O securities)',
+    method: 'Candidate filter requires a +1% to +6% move, price within 1.25% of the session high, at least 500,000 shares traded, and an intraday range no wider than 6%. It identifies stocks worth reviewing; it is not a buy instruction.',
+    comparisonSources: [
+      { label: 'Official NSE Top Gainers / Losers', url: 'https://www.nseindia.com/market-data/top-gainers-losers' },
+      { label: 'Screener broad-market ±5% screen', url: 'https://www.screener.in/screens/602651/todays-top-gainers-losers/' }
+    ]
+  };
+  marketMoversCache = result; marketMoversCachedAt = Date.now(); return result;
+}
 async function upstoxLeaders() {
   if (upstoxLeadersCache && Date.now() - upstoxLeadersCachedAt < 45 * 1000) return upstoxLeadersCache;
   const all = await upstoxQuotes(FALLBACK_NIFTY_UNIVERSE);
@@ -999,7 +1048,13 @@ exports.handler = async event => {
     try { return json(200, await sectorLeaders(sector), 'public, max-age=60'); }
     catch (error) { return json(503, { error: 'Sector data is temporarily unavailable', detail: error.message, retryAfterSeconds: 60 }); }
   }
-  if (type !== 'leaders' && (type !== 'stock' || !symbol)) return json(400, { error: 'Invalid request' });
+  if (type === 'movers') {
+    try { return json(200, await marketMovers(), 'public, max-age=60'); }
+    catch (error) {
+      if (marketMoversCache) return json(200, { ...marketMoversCache, delayed: true, note: error.message }, 'public, max-age=30');
+      return json(503, { error: 'Broad-market movers are temporarily unavailable', detail: error.message, retryAfterSeconds: 60 });
+    }
+  }  if (type !== 'leaders' && (type !== 'stock' || !symbol)) return json(400, { error: 'Invalid request' });
   try {
     if (type === 'leaders') return json(200, await resilientLeaders(), 'public, max-age=45');
     return json(200, await resilientStock(symbol), 'public, max-age=60');
@@ -1011,6 +1066,10 @@ exports.handler = async event => {
     return unavailable(error);
   }
 };
+
+
+
+
 
 
 

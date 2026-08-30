@@ -2,6 +2,17 @@
 
 Created by **Suman Devarakonda**.
 
+## v39.27 — 31 August 2026
+
+- Fixed Market Movers remaining on Loading by starting its request after the workspace is attached to the document.
+- Excluded Netlify function responses from service-worker caching to prevent stale market API results.
+- Verified the rendered panel in a headless browser against the local Netlify server.
+## v39.26 — 31 August 2026
+
+- Added an official NSE broad-market movers endpoint, using NIFTY 500 when available and NIFTY 50 as a labelled fallback.
+- Separated **NSE top gainers**, **broad ±5% movers**, and **Trade candidates** so a sharp price rise is not mistaken for a buy recommendation.
+- Added practical liquidity, session-high, volatility, and chase-risk gates with plain-language proof for every candidate.
+- Added direct NSE and Screener comparison links with clear universe and source labels.
 ## v39.25 — 31 August 2026
 
 - Converted Watch and sector-star controls into one-click add/remove toggles.
@@ -27,4 +38,6 @@ Created by **Suman Devarakonda**.
 
 - `.env`, `.env.*`, `.netlify`, access tokens, and private service keys are excluded from release ZIP files.
 - Upstox credentials remain server-side environment variables.
+
+
 
