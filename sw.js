@@ -1,4 +1,13 @@
-const CACHE='market-pulse-v39.27';const ASSETS=['./','./index.html','./styles.css?v=39.27','./config.js?v=39.27','./app.js?v=39.27','./manifest.webmanifest','./icon.svg'];self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method==='GET'&&url.origin===location.origin&&!url.pathname.startsWith('/api/')&&!url.pathname.startsWith('/.netlify/functions/'))event.respondWith(fetch(event.request).then(response=>{caches.open(CACHE).then(cache=>cache.put(event.request,response.clone()));return response}).catch(()=>caches.match(event.request)));});
+const CACHE='market-pulse-v39.36';const ASSETS=['./','./index.html','./styles.css?v=39.36','./config.js?v=39.36','./app.js?v=39.36','./manifest.webmanifest','./icon.svg'];self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS)).then(()=>self.skipWaiting())));self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));self.addEventListener('fetch',event=>{const url=new URL(event.request.url);if(event.request.method==='GET'&&url.origin===location.origin&&!url.pathname.startsWith('/api/')&&!url.pathname.startsWith('/.netlify/functions/'))event.respondWith(fetch(event.request).then(response=>{caches.open(CACHE).then(cache=>cache.put(event.request,response.clone()));return response}).catch(()=>caches.match(event.request)));});
+
+
+
+
+
+
+
+
+
 
 
 

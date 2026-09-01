@@ -200,7 +200,7 @@ async function upstoxStock(symbol) {
   const instruments = await upstoxInstruments();
   const instrument = instruments.get(symbol);
   if (!instrument) throw new Error(`${symbol} was not found in the Upstox NSE instrument list`);
-  const [quotes, history, fundamentals] = await Promise.all([upstoxQuotes([symbol]), upstoxDailyHistory(instrument.instrumentKey), upstoxFundamentals(instrument)]);
+  const [quotes, history, fundamentals, intraday] = await Promise.all([upstoxQuotes([symbol]), upstoxDailyHistory(instrument.instrumentKey), upstoxFundamentals(instrument), upstoxIntradayHistory(instrument.instrumentKey).catch(() => [])]);
   const quote = quotes[0];
   if (!quote) throw new Error(`Upstox returned no current quote for ${symbol}`);
   const closes = history.map(row => row.close);
@@ -218,7 +218,8 @@ async function upstoxStock(symbol) {
   };
   const value = {
     stock,
-    history: history.map(({ date, close }) => ({ date, close })),
+    history,
+    intraday,
     announcements: [],
     source: 'Upstox Analytics Token (NSE)',
     providerNotice: 'Read-only Upstox market data. Corporate disclosures continue to use NSE when available.'
@@ -1066,6 +1067,8 @@ exports.handler = async event => {
     return unavailable(error);
   }
 };
+
+
 
 
 
